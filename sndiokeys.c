@@ -30,6 +30,7 @@
  */
 #define KEY_INC	XK_plus
 #define KEY_DEC	XK_minus
+#define KEY_DEV	XK_0
 
 /*
  * modifiers: Ctrl + Alt
@@ -44,17 +45,20 @@
 char *dev_name;
 struct pollfd pfds[16];
 struct sioctl_hdl *hdl;
-unsigned int output_addr;
-int output_val, output_maxval;
-int output_found = 0;
 int verbose;
+
+struct ctl {
+	struct ctl *next;
+	struct sioctl_desc desc;
+	int val;
+} *ctl_list;
 
 /*
  * X bits
  */
 Display	*dpy;
-KeyCode inc_code, dec_code;
-KeySym *inc_map, *dec_map;
+KeyCode inc_code, dec_code, dev_code;
+KeySym *inc_map, *dec_map, *dev_map;
 
 /*
  * new control
@@ -62,21 +66,39 @@ KeySym *inc_map, *dec_map;
 static void
 dev_ondesc(void *unused, struct sioctl_desc *desc, int val)
 {
+	struct ctl *i, **pi;
+
 	if (desc == NULL)
 		return;
-	if (output_found)
-		return;
-	if (desc->group[0] == 0 &&
-	    strcmp(desc->node0.name, "output") == 0 &&
-	    strcmp(desc->func, "level") == 0) {
-		output_found = 1;
-		output_addr = desc->addr;
-		output_maxval = desc->maxval;
-		output_val = val;
-		if (verbose)
-			fprintf(stderr, "%s: output at addr %u, value = %u\n",
-			    dev_name, output_addr, output_val);
+
+	for (pi = &ctl_list; (i = *pi) != NULL; pi = &i->next) {
+		if (desc->addr == i->desc.addr) {
+			*pi = i->next;
+			free(i);
+			break;
+		}
 	}
+
+	switch (desc->type) {
+	case SIOCTL_NUM:
+	case SIOCTL_SW:
+	case SIOCTL_VEC:
+	case SIOCTL_LIST:
+	case SIOCTL_SEL:
+		break;
+	default:
+		return;
+	}
+
+	i = malloc(sizeof(struct ctl));
+	if (i == NULL) {
+		perror("malloc");
+		exit(1);
+	}
+	i->desc = *desc;
+	i->val = val;
+	i->next = *pi;
+	*pi = i;
 }
 
 /*
@@ -85,10 +107,32 @@ dev_ondesc(void *unused, struct sioctl_desc *desc, int val)
 static void
 dev_onval(void *unused, unsigned int addr, unsigned int val)
 {
-	if (addr == output_addr) {
+	struct ctl *i, *j;
+
+	i = ctl_list;
+	for (;;) {
+		if (i == NULL)
+			return;
+		if (i->desc.addr == addr)
+			break;
+		i = i->next;
+	}
+
+	if (i->desc.type == SIOCTL_SEL) {
+		for (j = ctl_list; j != NULL; j = j->next) {
+			if (strcmp(i->desc.group, j->desc.group) != 0 ||
+			    strcmp(i->desc.node0.name, j->desc.node0.name) != 0 ||
+			    strcmp(i->desc.func, j->desc.func) != 0 ||
+			    i->desc.node0.unit != j->desc.node0.unit)
+				continue;
+			j->val = (i->desc.addr == j->desc.addr);
+		}
 		if (verbose)
-			fprintf(stderr, "output changed %u -> %u\n", output_val, val);
-		output_val = val;
+			fprintf(stderr, "%s: %s.%s=%s\n", __func__, i->desc.node0.name, i->desc.func, i->desc.node1.name);
+	} else {
+		i->val = val;
+		if (verbose)
+			fprintf(stderr, "%s: %s.%s=%d\n", __func__, i->desc.node0.name, i->desc.func, i->val);
 	}
 }
 
@@ -121,12 +165,8 @@ dev_connect(void)
 			    dev_name);
 		return 0;
 	}
-	output_found = 0;
 	sioctl_ondesc(hdl, dev_ondesc, NULL);
 	sioctl_onval(hdl, dev_onval, NULL);
-	if (!output_found)
-		fprintf(stderr, "%s: warning, couldn't find output control\n",
-		    dev_name);
 	return 1;
 }
 
@@ -137,25 +177,86 @@ static void
 dev_incrvol(int incr)
 {
 	int vol;
+	struct ctl *i;
 
 	if (!dev_connect())
 		return;
-	vol = output_val + incr;
-	if (vol > output_maxval)
-		vol = output_maxval;
-	if (vol < 0)
-		vol = 0;
-	if (output_val != (unsigned int)vol) {
-		output_val = vol;
-		if (hdl && output_found) {
-			if (verbose) {
-				fprintf(stderr, "%s: setting volume to %d\n",
-				    dev_name, vol);
-			}
-			sioctl_setval(hdl, output_addr, output_val);
-			dev_disconnect();
+
+	for (i = ctl_list; i != NULL; i = i->next) {
+		if (i->desc.group[0] != 0 ||
+		    strcmp(i->desc.node0.name, "output") != 0 ||
+		    strcmp(i->desc.func, "level") != 0)
+			continue;
+
+		vol = i->val + incr;
+		if (verbose) {
+			fprintf(stderr, "%s: %d\n", __func__, vol);
 		}
+		if (vol < 0)
+			vol = 0;
+		if (vol > i->desc.maxval)
+			vol = i->desc.maxval;
+		if (i->val != vol) {
+			if (hdl) {
+				if (verbose) {
+					fprintf(stderr, "%s: setting volume to %d\n",
+					    dev_name, vol);
+				}
+				i->val = vol;
+				sioctl_setval(hdl, i->desc.addr, vol);
+				dev_disconnect();
+			}
+		}
+        }
+}
+
+/*
+ * send output volume message and to the server
+ */
+static void
+dev_seldev()
+{
+	struct ctl *i, *j;
+
+	if (!dev_connect())
+		return;
+
+	i = ctl_list;
+	while (1) {
+		if (i == NULL)
+			return;
+		if (i->desc.group[0] == 0 &&
+		    strcmp(i->desc.node0.name, "server") == 0 &&
+		    strcmp(i->desc.func, "device") == 0 &&
+		    i->val == 1)
+			break;
+		i = i->next;
 	}
+
+	j = i;
+	while (1) {
+		j = j->next;
+		if (j == NULL)
+			j = ctl_list;
+		if (j->desc.addr == i->desc.addr)
+			return;
+		if (j->desc.group[0] == 0 &&
+		    strcmp(j->desc.node0.name, "server") == 0 &&
+		    strcmp(j->desc.func, "device") == 0 &&
+		    j->val == 0)
+			break;
+	}
+
+	if (verbose) {
+		fprintf(stderr, "%s: server.device: %s -> %s\n",
+		    dev_name, i->desc.node1.name, j->desc.node1.name);
+	}
+
+	i->val = 0;
+	j->val = 1;
+
+	sioctl_setval(hdl, j->desc.addr, 1);
+	dev_disconnect();
 }
 
 /*
@@ -184,6 +285,13 @@ grab_keys(void)
 		exit(1);
 	}
 
+	dev_code = XKeysymToKeycode(dpy, KEY_DEV);
+	dev_map = XGetKeyboardMapping(dpy, dev_code, 1, &nret);
+	if (nret <= ShiftMask) {
+		fprintf(stderr, "couldn't get keymap for '0' key\n");
+		exit(1);
+	}
+
 	nscr = ScreenCount(dpy);
 	for (i = 0; i <= 0xff; i++) {
 		if ((i & MODMASK) != 0)
@@ -195,6 +303,10 @@ grab_keys(void)
 			    GrabModeAsync, GrabModeAsync);
 
 			XGrabKey(dpy, dec_code, i | MODMASK,
+			    RootWindow(dpy, scr), 1,
+			    GrabModeAsync, GrabModeAsync);
+
+			XGrabKey(dpy, dev_code, i | MODMASK,
 			    RootWindow(dpy, scr), 1,
 			    GrabModeAsync, GrabModeAsync);
 		}
@@ -300,6 +412,9 @@ main(int argc, char **argv)
 			} else if (xev.xkey.keycode == dec_code &&
 			    dec_map[xev.xkey.state & ShiftMask] == KEY_DEC) {
 				dev_incrvol(-VOL_INC);
+			} else if (xev.xkey.keycode == dev_code &&
+			    dev_map[xev.xkey.state & ShiftMask] == KEY_DEV) {
+				dev_seldev();
 			}
 		}
 		nfds = (hdl != NULL) ? sioctl_pollfd(hdl, pfds, 0) : 0;

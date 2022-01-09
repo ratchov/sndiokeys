@@ -19,21 +19,36 @@
 .Os
 .Sh NAME
 .Nm sndiokeys
-.Nd hot-keys in X to control sndiod master volume
+.Nd
+control sndiod with hot-keys
 .Sh SYNOPSIS
 .Nm sndiokeys
 .Op Fl D
 .Op Fl v
 .Op Fl f Ar device
 .Sh DESCRIPTION
-The
 .Nm
-increments or
-decrements
+registers hot-keys in
+.Xr X 7
+to control
+.Xr sndiod 8 .
+Pressing the following keys while the
+Control and Alt keys are held down
+change
 .Xr sndiod 8
-master volume whenever the "+" and "-" keys
-are pressed while the Control and Alt keys are held down.
-It is meant to be started as background process by
+controls as follows:
+.Pp
+.Bl -tag -width "XXXX" -offset indent -compact
+.It +
+increase audio output level
+.It -
+decrease audio output level
+.It 0
+cycle through audio devices.
+.El
+.Pp
+.Nm
+is meant to be started as background process by
 .Xr xinit 1
 or
 .Xr xdm 1
