@@ -42,21 +42,24 @@
  */
 #define VOL_INC	9
 
-struct sioctl_hdl *hdl;
-int verbose;
-
 struct ctl {
 	struct ctl *next;
 	struct sioctl_desc desc;
 	int val;
 } *ctl_list;
 
-/*
- * X bits
- */
+struct key {
+	struct key *next;
+	KeySym sym;
+	KeyCode code;
+	KeySym *map;
+	void (*func)(void);
+} *key_list;
+
 Display	*dpy;
-KeyCode inc_code, dec_code, dev_code;
-KeySym *inc_map, *dec_map, *dev_map;
+struct sioctl_hdl *hdl;
+int verbose;
+
 
 /*
  * new control
@@ -130,10 +133,10 @@ dev_onval(void *unused, unsigned int addr, unsigned int val)
 }
 
 /*
- * send output volume message and to the server
+ * change output.level control by given increment
  */
 static void
-dev_incrvol(int incr)
+dev_chgvol(int incr)
 {
 	int vol;
 	struct ctl *i;
@@ -159,10 +162,28 @@ dev_incrvol(int incr)
 }
 
 /*
- * send output volume message and to the server
+ * increase output.level
  */
 static void
-dev_seldev()
+dev_incvol(void)
+{
+	dev_chgvol(VOL_INC);
+}
+
+/*
+ * increase output.level
+ */
+static void
+dev_decvol(void)
+{
+	dev_chgvol(-VOL_INC);
+}
+
+/*
+ * cycle server.device
+ */
+static void
+dev_seldev(void)
 {
 	struct ctl *i, *j;
 
@@ -202,35 +223,30 @@ dev_seldev()
 }
 
 /*
- * register hot-keys in X
+ * register given hot-key in X
  */
 static void
-grab_keys(void)
+grab_key(int sym, void (*func)(void))
 {
+	struct key *key;
 	unsigned int i, scr, nscr;
 	int nret;
 
 	if (verbose)
-		fprintf(stderr, "grabbing keys\n");
+		fprintf(stderr, "grabbing key\n");
 
-	inc_code = XKeysymToKeycode(dpy, KEY_INC);
-	inc_map = XGetKeyboardMapping(dpy, inc_code, 1, &nret);
-	if (nret <= ShiftMask) {
-		fprintf(stderr, "couldn't get keymap for '+' key\n");
+	key = malloc(sizeof(struct key));
+	if (key == NULL) {
+		perror("malloc");
 		exit(1);
 	}
 
-	dec_code = XKeysymToKeycode(dpy, KEY_DEC);
-	dec_map = XGetKeyboardMapping(dpy, dec_code, 1, &nret);
+	key->sym = sym;
+	key->func = func;
+	key->code = XKeysymToKeycode(dpy, sym);
+	key->map = XGetKeyboardMapping(dpy, key->code, 1, &nret);
 	if (nret <= ShiftMask) {
-		fprintf(stderr, "couldn't get keymap for '-' key\n");
-		exit(1);
-	}
-
-	dev_code = XKeysymToKeycode(dpy, KEY_DEV);
-	dev_map = XGetKeyboardMapping(dpy, dev_code, 1, &nret);
-	if (nret <= ShiftMask) {
-		fprintf(stderr, "couldn't get keymap for '0' key\n");
+		fprintf(stderr, "couldn't get keymap for '%c' key\n", sym);
 		exit(1);
 	}
 
@@ -239,20 +255,23 @@ grab_keys(void)
 		if ((i & MODMASK) != 0)
 			continue;
 		for (scr = 0; scr != nscr; scr++) {
-
-			XGrabKey(dpy, inc_code, i | MODMASK,
+			XGrabKey(dpy, key->code, i | MODMASK,
 			    RootWindow(dpy, scr), 1,
 			    GrabModeAsync, GrabModeAsync);
 
-			XGrabKey(dpy, dec_code, i | MODMASK,
-			    RootWindow(dpy, scr), 1,
-			    GrabModeAsync, GrabModeAsync);
-
-			XGrabKey(dpy, dev_code, i | MODMASK,
-			    RootWindow(dpy, scr), 1,
-			    GrabModeAsync, GrabModeAsync);
 		}
 	}
+
+	key->next = key_list;
+	key_list = key;
+}
+
+static void
+grab_keys(void)
+{
+	grab_key(KEY_INC, dev_incvol);
+	grab_key(KEY_DEC, dev_decvol);
+	grab_key(KEY_DEV, dev_seldev);
 }
 
 /*
@@ -261,13 +280,17 @@ grab_keys(void)
 static void
 ungrab_keys(void)
 {
+	struct key *key;
 	unsigned int scr, nscr;
 
 	if (verbose)
 		fprintf(stderr, "ungrabbing keys\n");
 
-	XFree(inc_map);
-	XFree(dec_map);
+	while ((key = key_list) != NULL) {
+		key_list = key_list->next;
+		XFree(key->map);
+		free(key);
+	}
 
 	nscr = ScreenCount(dpy);
 	for (scr = 0; scr != nscr; scr++)
@@ -284,6 +307,7 @@ main(int argc, char **argv)
 	struct ctl *i;
 	char *dev_name;
 	struct pollfd *pfds;
+	struct key *key;
 
 	/*
 	 * parse command line options
@@ -363,15 +387,10 @@ main(int argc, char **argv)
 			}
 			if (xev.type != KeyPress)
 				continue;
-			if (xev.xkey.keycode == inc_code &&
-			    inc_map[xev.xkey.state & ShiftMask] == KEY_INC) {
-				dev_incrvol(VOL_INC);
-			} else if (xev.xkey.keycode == dec_code &&
-			    dec_map[xev.xkey.state & ShiftMask] == KEY_DEC) {
-				dev_incrvol(-VOL_INC);
-			} else if (xev.xkey.keycode == dev_code &&
-			    dev_map[xev.xkey.state & ShiftMask] == KEY_DEV) {
-				dev_seldev();
+			for (key = key_list; key != NULL; key = key->next) {
+				if (xev.xkey.keycode == key->code &&
+				    key->map[xev.xkey.state & ShiftMask] == key->sym)
+					key->func();
 			}
 		}
 		nfds = (hdl != NULL) ? sioctl_pollfd(hdl, pfds, 0) : 0;
@@ -384,9 +403,7 @@ main(int argc, char **argv)
 			break;
 	}
 
-	XFree(inc_map);
-	XFree(dec_map);
-	XFree(dev_map);
+	ungrab_keys();
 	XCloseDisplay(dpy);
 
 	sioctl_close(hdl);
