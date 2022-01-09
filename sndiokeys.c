@@ -315,7 +315,7 @@ main(int argc, char **argv)
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	while ((c = getopt(argc, argv, "Df:q:v")) != -1) {
+	while ((c = getopt(argc, argv, "Df:v")) != -1) {
 		switch (c) {
 		case 'D':
 			background = 1;
@@ -323,7 +323,6 @@ main(int argc, char **argv)
 		case 'v':
 			verbose++;
 			break;
-		case 'q': /* compat */
 		case 'f':
 			dev_name = optarg;
 			break;
