@@ -42,8 +42,6 @@
  */
 #define VOL_INC	9
 
-char *dev_name;
-struct pollfd pfds[16];
 struct sioctl_hdl *hdl;
 int verbose;
 
@@ -127,47 +125,8 @@ dev_onval(void *unused, unsigned int addr, unsigned int val)
 				continue;
 			j->val = (i->desc.addr == j->desc.addr);
 		}
-		if (verbose)
-			fprintf(stderr, "%s: %s.%s=%s\n", __func__, i->desc.node0.name, i->desc.func, i->desc.node1.name);
-	} else {
+	} else
 		i->val = val;
-		if (verbose)
-			fprintf(stderr, "%s: %s.%s=%d\n", __func__, i->desc.node0.name, i->desc.func, i->val);
-	}
-}
-
-/*
- * if there's an error, close connection to sndiod
- */
-static void
-dev_disconnect(void)
-{
-	if (!sioctl_eof(hdl))
-		return;
-	if (verbose)
-		fprintf(stderr, "%s: dev device disconnected\n", dev_name);
-	sioctl_close(hdl);
-	hdl = NULL;
-}
-
-/*
- * connect to sndiod
- */
-static int
-dev_connect(void)
-{
-	if (hdl != NULL)
-		return 1;
-	hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
-	if (hdl == NULL) {
-		if (verbose)
-			fprintf(stderr, "%s: couldn't open dev device\n",
-			    dev_name);
-		return 0;
-	}
-	sioctl_ondesc(hdl, dev_ondesc, NULL);
-	sioctl_onval(hdl, dev_onval, NULL);
-	return 1;
 }
 
 /*
@@ -179,9 +138,6 @@ dev_incrvol(int incr)
 	int vol;
 	struct ctl *i;
 
-	if (!dev_connect())
-		return;
-
 	for (i = ctl_list; i != NULL; i = i->next) {
 		if (i->desc.group[0] != 0 ||
 		    strcmp(i->desc.node0.name, "output") != 0 ||
@@ -189,23 +145,15 @@ dev_incrvol(int incr)
 			continue;
 
 		vol = i->val + incr;
-		if (verbose) {
-			fprintf(stderr, "%s: %d\n", __func__, vol);
-		}
 		if (vol < 0)
 			vol = 0;
 		if (vol > i->desc.maxval)
 			vol = i->desc.maxval;
 		if (i->val != vol) {
-			if (hdl) {
-				if (verbose) {
-					fprintf(stderr, "%s: setting volume to %d\n",
-					    dev_name, vol);
-				}
-				i->val = vol;
-				sioctl_setval(hdl, i->desc.addr, vol);
-				dev_disconnect();
-			}
+			if (verbose)
+				fprintf(stderr, "setting level to %d\n", vol);
+			i->val = vol;
+			sioctl_setval(hdl, i->desc.addr, vol);
 		}
         }
 }
@@ -217,9 +165,6 @@ static void
 dev_seldev()
 {
 	struct ctl *i, *j;
-
-	if (!dev_connect())
-		return;
 
 	i = ctl_list;
 	while (1) {
@@ -247,16 +192,13 @@ dev_seldev()
 			break;
 	}
 
-	if (verbose) {
-		fprintf(stderr, "%s: server.device: %s -> %s\n",
-		    dev_name, i->desc.node1.name, j->desc.node1.name);
-	}
+	if (verbose)
+		fprintf(stderr, "setting device to %s\n", j->desc.node1.name);
 
 	i->val = 0;
 	j->val = 1;
 
 	sioctl_setval(hdl, j->desc.addr, 1);
-	dev_disconnect();
 }
 
 /*
@@ -338,7 +280,10 @@ main(int argc, char **argv)
 	int scr;
 	XEvent xev;
 	int c, nfds;
-	int background, revents;
+	int background;
+	struct ctl *i;
+	char *dev_name;
+	struct pollfd *pfds;
 
 	/*
 	 * parse command line options
@@ -377,11 +322,23 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
+	if (hdl == NULL) {
+		fprintf(stderr, "%s: couldn't open audio device\n", dev_name);
+		return 0;
+	}
+	sioctl_ondesc(hdl, dev_ondesc, NULL);
+	sioctl_onval(hdl, dev_onval, NULL);
+
+	pfds = calloc(sioctl_nfds(hdl) + 1, sizeof(struct pollfd));
+	if (pfds == NULL) {
+		perror("calloc\n");
+		exit(1);
+	}
+
 	/* mask non-key events for each screan */
 	for (scr = 0; scr != ScreenCount(dpy); scr++)
 		XSelectInput(dpy, RootWindow(dpy, scr), KeyPress);
-
-	(void)dev_connect();
 
 	grab_keys();
 
@@ -422,19 +379,22 @@ main(int argc, char **argv)
 		pfds[nfds].events = POLLIN;
 		while (poll(pfds, nfds + 1, -1) < 0 && errno == EINTR)
 			; /* nothing */
-		if (hdl) {
-			revents = sioctl_revents(hdl, pfds);
-			if (revents & POLLHUP)
-				dev_disconnect();
-			else if (revents & POLLIN) {
-				/* what */
-			}
-		}
+		if ((sioctl_revents(hdl, pfds) & POLLHUP) ||
+		    (pfds[nfds].revents & POLLHUP))
+			break;
 	}
+
 	XFree(inc_map);
 	XFree(dec_map);
+	XFree(dev_map);
 	XCloseDisplay(dpy);
-	if (hdl)
-		sioctl_close(hdl);
+
+	sioctl_close(hdl);
+
+	while ((i = ctl_list) != NULL) {
+		ctl_list = ctl_list->next;
+		free(i);
+	}
+
 	return 0;
 }
