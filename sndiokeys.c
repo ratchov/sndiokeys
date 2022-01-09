@@ -28,9 +28,9 @@
 /*
  * X keysyms to increment / decrement volume: + and -
  */
-#define KEY_INC	XK_plus
-#define KEY_DEC	XK_minus
-#define KEY_DEV	XK_0
+#define KEY_INC		XK_plus
+#define KEY_DEC		XK_minus
+#define KEY_CYCLE	XK_0
 
 /*
  * modifiers: Ctrl + Alt
@@ -60,12 +60,11 @@ Display	*dpy;
 struct sioctl_hdl *hdl;
 int verbose;
 
-
 /*
- * new control
+ * sndio call-back for added/removed controls
  */
 static void
-dev_ondesc(void *unused, struct sioctl_desc *desc, int val)
+ondesc(void *unused, struct sioctl_desc *desc, int val)
 {
 	struct ctl *i, **pi;
 
@@ -103,10 +102,10 @@ dev_ondesc(void *unused, struct sioctl_desc *desc, int val)
 }
 
 /*
- * control value changed
+ * sndio call-back for control value/changes
  */
 static void
-dev_onval(void *unused, unsigned int addr, unsigned int val)
+onval(void *unused, unsigned int addr, unsigned int val)
 {
 	struct ctl *i, *j;
 
@@ -136,7 +135,7 @@ dev_onval(void *unused, unsigned int addr, unsigned int val)
  * change output.level control by given increment
  */
 static void
-dev_chgvol(int incr)
+change_level(int incr)
 {
 	int vol;
 	struct ctl *i;
@@ -165,25 +164,25 @@ dev_chgvol(int incr)
  * increase output.level
  */
 static void
-dev_incvol(void)
+inc_level(void)
 {
-	dev_chgvol(VOL_INC);
+	change_level(VOL_INC);
 }
 
 /*
  * increase output.level
  */
 static void
-dev_decvol(void)
+dec_level(void)
 {
-	dev_chgvol(-VOL_INC);
+	change_level(-VOL_INC);
 }
 
 /*
  * cycle server.device
  */
 static void
-dev_seldev(void)
+cycle_device(void)
 {
 	struct ctl *i, *j;
 
@@ -226,7 +225,7 @@ dev_seldev(void)
  * register given hot-key in X
  */
 static void
-grab_key(int sym, void (*func)(void))
+add_key(int sym, void (*func)(void))
 {
 	struct key *key;
 	unsigned int i, scr, nscr;
@@ -269,9 +268,9 @@ grab_key(int sym, void (*func)(void))
 static void
 grab_keys(void)
 {
-	grab_key(KEY_INC, dev_incvol);
-	grab_key(KEY_DEC, dev_decvol);
-	grab_key(KEY_DEV, dev_seldev);
+	add_key(KEY_INC, inc_level);
+	add_key(KEY_DEC, dec_level);
+	add_key(KEY_CYCLE, cycle_device);
 }
 
 /*
@@ -351,8 +350,8 @@ main(int argc, char **argv)
 		fprintf(stderr, "%s: couldn't open audio device\n", dev_name);
 		return 0;
 	}
-	sioctl_ondesc(hdl, dev_ondesc, NULL);
-	sioctl_onval(hdl, dev_onval, NULL);
+	sioctl_ondesc(hdl, ondesc, NULL);
+	sioctl_onval(hdl, onval, NULL);
 
 	pfds = calloc(sioctl_nfds(hdl) + 1, sizeof(struct pollfd));
 	if (pfds == NULL) {
