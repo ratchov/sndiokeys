@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sndio.h>
@@ -58,7 +59,67 @@ struct key {
 
 Display	*dpy;
 struct sioctl_hdl *hdl;
+char *dev_name;
 int verbose;
+int beep;
+
+static void
+play_beep(void)
+{
+#define BELL_RATE	48000
+#define BELL_LEN	(BELL_RATE / 20)
+#define BELL_PERIOD	(BELL_RATE / 880)
+#define BELL_AMP	(INT16_MAX / 32)
+	int16_t data[BELL_LEN];
+	struct sio_hdl *hdl;
+	struct sio_par par;
+	int i;
+
+	hdl = sio_open(dev_name, SIO_PLAY, 0);
+	if (hdl == NULL) {
+		if (verbose)
+			fprintf(stderr, "bell: failed to open audio device\n");
+		return;
+	}
+
+	sio_initpar(&par);
+	par.bits = 16;
+	par.rate = BELL_RATE;
+	par.pchan = 1;
+
+	if (!sio_setpar(hdl, &par) || !sio_getpar(hdl, &par)) {
+		if (verbose)
+			fprintf(stderr, "bell: failed to set parameters\n");
+		goto err_close;
+	}
+
+	if (par.bits != 16 || par.bps != 2 || par.le != SIO_LE_NATIVE ||
+	    par.pchan != 1 || par.rate != BELL_RATE) {
+		if (verbose)
+			fprintf(stderr, "bell: bad parameters\n");
+		goto err_close;
+	}
+
+	if (!sio_start(hdl)) {
+		if (verbose)
+			fprintf(stderr, "bell: failed to start playback\n");
+		goto err_close;
+	}
+
+	for (i = 0; i < BELL_LEN; i++) {
+		data[i] = (i % BELL_PERIOD) < (BELL_PERIOD / 2) ?
+		    BELL_AMP : -BELL_AMP;
+	}
+
+	if (sio_write(hdl, data, sizeof(data)) != sizeof(data)) {
+		if (verbose)
+			fprintf(stderr, "bell: short write\n");
+		goto err_close;
+	}
+
+err_close:
+	sio_close(hdl);
+}
 
 /*
  * sndio call-back for added/removed controls
@@ -126,6 +187,8 @@ onval(void *unused, unsigned int addr, unsigned int val)
 			    i->desc.node0.unit != j->desc.node0.unit)
 				continue;
 			j->val = (i->desc.addr == j->desc.addr);
+			if (beep && j->val)
+				play_beep();
 		}
 	} else
 		i->val = val;
@@ -299,7 +362,6 @@ main(int argc, char **argv)
 	int c, nfds;
 	int background;
 	struct ctl *i;
-	char *dev_name;
 	struct pollfd *pfds;
 	struct key *key;
 
@@ -309,8 +371,11 @@ main(int argc, char **argv)
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	while ((c = getopt(argc, argv, "Df:v")) != -1) {
+	while ((c = getopt(argc, argv, "bDf:v")) != -1) {
 		switch (c) {
+		case 'b':
+			beep = 1;
+			break;
 		case 'D':
 			background = 1;
 			break;
