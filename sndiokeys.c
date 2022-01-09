@@ -187,8 +187,6 @@ onval(void *unused, unsigned int addr, unsigned int val)
 			    i->desc.node0.unit != j->desc.node0.unit)
 				continue;
 			j->val = (i->desc.addr == j->desc.addr);
-			if (beep && j->val)
-				play_beep();
 		}
 	} else
 		i->val = val;
@@ -283,6 +281,9 @@ cycle_device(void)
 	j->val = 1;
 
 	sioctl_setval(hdl, j->desc.addr, 1);
+
+	if (beep)
+		play_beep();
 }
 
 /*
