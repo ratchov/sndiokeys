@@ -26,7 +26,7 @@
 #include <X11/keysym.h>
 
 /*
- * X keysyms to increment / decrement volume: + and -
+ * X keysyms to increment / decrement output level and cycle through devices
  */
 #define KEY_INC		XK_plus
 #define KEY_DEC		XK_minus
@@ -38,9 +38,9 @@
 #define MODMASK		(ControlMask | Mod1Mask)
 
 /*
- * volume increment
+ * number of level steps between 0 and 1
  */
-#define VOL_INC	9
+#define NSTEP		20
 
 struct ctl {
 	struct ctl *next;
@@ -135,9 +135,9 @@ onval(void *unused, unsigned int addr, unsigned int val)
  * change output.level control by given increment
  */
 static void
-change_level(int incr)
+change_level(int dir)
 {
-	int vol;
+	int incr, vol;
 	struct ctl *i;
 
 	for (i = ctl_list; i != NULL; i = i->next) {
@@ -146,7 +146,8 @@ change_level(int incr)
 		    strcmp(i->desc.func, "level") != 0)
 			continue;
 
-		vol = i->val + incr;
+		incr = ((int)i->desc.maxval + NSTEP - 1) / NSTEP;
+		vol = i->val + dir * incr;
 		if (vol < 0)
 			vol = 0;
 		if (vol > i->desc.maxval)
@@ -166,7 +167,7 @@ change_level(int incr)
 static void
 inc_level(void)
 {
-	change_level(VOL_INC);
+	change_level(1);
 }
 
 /*
@@ -175,7 +176,7 @@ inc_level(void)
 static void
 dec_level(void)
 {
-	change_level(-VOL_INC);
+	change_level(-1);
 }
 
 /*
