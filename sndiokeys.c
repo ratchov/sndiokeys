@@ -232,9 +232,6 @@ add_key(int sym, void (*func)(void))
 	unsigned int i, scr, nscr;
 	int nret;
 
-	if (verbose)
-		fprintf(stderr, "grabbing key\n");
-
 	key = malloc(sizeof(struct key));
 	if (key == NULL) {
 		perror("malloc");
@@ -282,9 +279,6 @@ ungrab_keys(void)
 {
 	struct key *key;
 	unsigned int scr, nscr;
-
-	if (verbose)
-		fprintf(stderr, "ungrabbing keys\n");
 
 	while ((key = key_list) != NULL) {
 		key_list = key_list->next;
