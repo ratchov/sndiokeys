@@ -61,7 +61,7 @@ Display	*dpy;
 struct sioctl_hdl *hdl;
 char *dev_name;
 int verbose;
-int beep;
+int silent;
 
 static void
 play_beep(void)
@@ -282,7 +282,7 @@ cycle_device(void)
 
 	sioctl_setval(hdl, j->desc.addr, 1);
 
-	if (beep)
+	if (!silent)
 		play_beep();
 }
 
@@ -372,13 +372,13 @@ main(int argc, char **argv)
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	while ((c = getopt(argc, argv, "bDf:v")) != -1) {
+	while ((c = getopt(argc, argv, "Df:sv")) != -1) {
 		switch (c) {
-		case 'b':
-			beep = 1;
-			break;
 		case 'D':
 			background = 1;
+			break;
+		case 's':
+			silent = 1;
 			break;
 		case 'v':
 			verbose++;
@@ -395,7 +395,7 @@ main(int argc, char **argv)
 
 	if (argc > 0) {
 	bad_usage:
-		fprintf(stderr, "usage: sndiokeys [-Dv] [-f device]\n");
+		fprintf(stderr, "usage: sndiokeys [-Dsv] [-f device]\n");
 		exit(1);
 	}
 

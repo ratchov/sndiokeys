@@ -24,6 +24,7 @@ control sndiod with hot-keys
 .Sh SYNOPSIS
 .Nm sndiokeys
 .Op Fl D
+.Op Fl s
 .Op Fl v
 .Op Fl f Ar device
 .Sh DESCRIPTION
@@ -57,12 +58,12 @@ It exits when X session terminates.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds
-.It Fl b
-Emmit audible beep when audio device is changed.
 .It Fl D
 Daemonize.
 .It Fl f Ar device
 Audio device to control.
+.It Fl s
+Don't emmit audible beep when audio device is changed.
 .It Fl v
 Increase log verbosity.
 .El
