@@ -27,13 +27,6 @@
 #include <X11/keysym.h>
 
 /*
- * X keysyms to increment / decrement output level and cycle through devices
- */
-#define KEY_INC		XK_plus
-#define KEY_DEC		XK_minus
-#define KEY_CYCLE	XK_0
-
-/*
  * modifiers: Ctrl + Alt
  */
 #define MODMASK		(ControlMask | Mod1Mask)
@@ -62,6 +55,9 @@ struct sioctl_hdl *hdl;
 char *dev_name;
 int verbose;
 int silent;
+char *key_inc = "plus";
+char *key_dec = "minus";
+char *key_cycle = "0";
 
 static void
 play_beep(void)
@@ -290,7 +286,7 @@ cycle_device(void)
  * register given hot-key in X
  */
 static void
-add_key(int sym, void (*func)(void))
+add_key(char *sym, void (*func)(void))
 {
 	struct key *key;
 	unsigned int i, scr, nscr;
@@ -302,12 +298,16 @@ add_key(int sym, void (*func)(void))
 		exit(1);
 	}
 
-	key->sym = sym;
+	key->sym = XStringToKeysym(sym);
+	if (key->sym == NoSymbol) {
+		fprintf(stderr, "%s: couldn't find keysym for key\n", sym);
+		exit(1);
+	}
 	key->func = func;
-	key->code = XKeysymToKeycode(dpy, sym);
+	key->code = XKeysymToKeycode(dpy, key->sym);
 	key->map = XGetKeyboardMapping(dpy, key->code, 1, &nret);
 	if (nret <= ShiftMask) {
-		fprintf(stderr, "couldn't get keymap for '%c' key\n", sym);
+		fprintf(stderr, "%s: couldn't get keymap for key\n", sym);
 		exit(1);
 	}
 
@@ -330,9 +330,9 @@ add_key(int sym, void (*func)(void))
 static void
 grab_keys(void)
 {
-	add_key(KEY_INC, inc_level);
-	add_key(KEY_DEC, dec_level);
-	add_key(KEY_CYCLE, cycle_device);
+	add_key(key_inc, inc_level);
+	add_key(key_dec, dec_level);
+	add_key(key_cycle, cycle_device);
 }
 
 /*
