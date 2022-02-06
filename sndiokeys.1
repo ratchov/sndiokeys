@@ -72,9 +72,9 @@ Function names are:
 .Pp
 .Bl -tag -width "cycle_device" -offset indent -compact
 .It inc_level
-increase audio output level
+increase output level
 .It dec_level
-decrease audio output level
+decrease output level
 .It cycle_device
 cycle through audio devices
 .El
@@ -87,6 +87,19 @@ Don't emit audible beep when audio device is changed.
 .It Fl v
 Increase log verbosity.
 .El
+.Sh EXAMPLES
+Increase or decrease output level when Up or Down keys are pressed
+while the Control and Mod1 keys are held down:
+.Bd -literal -offset indent
+$ sndiokeys -b Control+Mod1+Up:inc_level \\
+            -b Control+Mod1+Down:dec_level
+.Ed
+.Pp
+Make volume keys found on multimedia keyboards control the output level:
+.Bd -literal -offset indent
+$ sndiokeys -b XF86_AudioRaiseVolume:inc_level \\
+            -b XF86_AudioLowerVolume:dec_level
+.Ed
 .Sh SEE ALSO
 .Xr sndioctl 1 ,
 .Xr startx 1 ,
