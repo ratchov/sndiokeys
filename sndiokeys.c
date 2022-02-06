@@ -27,14 +27,37 @@
 #include <X11/keysym.h>
 
 /*
- * modifiers: Ctrl + Alt
- */
-#define MODMASK		(ControlMask | Mod1Mask)
-
-/*
  * number of level steps between 0 and 1
  */
 #define NSTEP		20
+
+static void inc_level(void);
+static void dec_level(void);
+static void cycle_device(void);
+
+struct modname {
+	int mask;
+	char *name;
+} modname_tab[] = {
+	{ControlMask, "Control"},
+	{Mod1Mask, "Mod1"},
+	{Mod2Mask, "Mod2"},
+	{Mod3Mask, "Mod3"},
+	{Mod4Mask, "Mod4"},
+	{Mod5Mask, "Mod5"},
+	{0, NULL}
+};
+
+struct binding {
+	void (*func)(void);
+	char *name;
+	char *keysym;
+} binding_tab[] = {
+	{inc_level,	"inc_level",	"plus"},
+	{dec_level,	"dec_level",	"minus"},
+	{cycle_device,	"cycle_device",	"0"},
+	{NULL, NULL}
+};
 
 struct ctl {
 	struct ctl *next;
@@ -55,9 +78,7 @@ struct sioctl_hdl *hdl;
 char *dev_name;
 int verbose;
 int silent;
-char *key_inc = "plus";
-char *key_dec = "minus";
-char *key_cycle = "0";
+int modmask = ControlMask | Mod1Mask;
 
 static void
 play_beep(void)
@@ -313,10 +334,10 @@ add_key(char *sym, void (*func)(void))
 
 	nscr = ScreenCount(dpy);
 	for (i = 0; i <= 0xff; i++) {
-		if ((i & MODMASK) != 0)
+		if ((i & modmask) != 0)
 			continue;
 		for (scr = 0; scr != nscr; scr++) {
-			XGrabKey(dpy, key->code, i | MODMASK,
+			XGrabKey(dpy, key->code, i | modmask,
 			    RootWindow(dpy, scr), 1,
 			    GrabModeAsync, GrabModeAsync);
 
@@ -330,9 +351,10 @@ add_key(char *sym, void (*func)(void))
 static void
 grab_keys(void)
 {
-	add_key(key_inc, inc_level);
-	add_key(key_dec, dec_level);
-	add_key(key_cycle, cycle_device);
+	struct binding *b;
+
+	for (b = binding_tab; b->func != NULL; b++)
+		add_key(b->keysym, b->func);
 }
 
 /*
@@ -356,6 +378,89 @@ ungrab_keys(void)
 }
 
 int
+streq(const char *data, size_t size, const char *cstr)
+{
+	return strncmp(cstr, data, size) == 0 && cstr[size] == 0;
+}
+
+int
+parsemod(char *str)
+{
+	char *end, *p;
+	struct modname *mod;
+	int mask;
+
+	mask = 0;
+	p = str;
+	while (*p != 0) {
+		end = p;
+		while (*end != 0 && *end != ',')
+			end++;
+
+		mod = modname_tab;
+		while (1) {
+			if (mod->mask == 0) {
+				fprintf(stderr, "%s: bad modifiers\n", str);
+				exit(1);
+			}
+			if (streq(p, end - p, mod->name)) {
+				mask |= mod->mask;
+				break;
+			}
+			mod++;
+		}
+
+		if (*end == 0)
+			break;
+
+		p = end + 1;
+	}
+
+	return mask;
+}
+
+void
+parsekey(char *str)
+{
+	char *p;
+	struct binding *b;
+	char *keysym;
+	size_t len;
+
+	p = strchr(str, ':');
+	if (p == NULL) {
+		fprintf(stderr, "%s: expected ':'\n", str);
+		exit(1);
+	}
+
+	len = p - str;
+	keysym = malloc(len + 1);
+	if (keysym == NULL) {
+		perror("malloc");
+		exit(1);
+	}
+	memcpy(keysym, str, len);
+	keysym[len] = 0;
+
+	/* skip ':' */
+	p++;
+
+	b = binding_tab;
+	while (1) {
+		if (b->func == NULL) {
+			fprintf(stderr, "%s: bad function name\n", p);
+			exit(1);
+		}
+		if (strcmp(p, b->name) == 0)
+			break;
+
+		b++;
+	}
+
+	b->keysym = keysym;
+}
+
+int
 main(int argc, char **argv)
 {
 	int scr;
@@ -372,10 +477,16 @@ main(int argc, char **argv)
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	while ((c = getopt(argc, argv, "Df:sv")) != -1) {
+	while ((c = getopt(argc, argv, "Df:k:m:sv")) != -1) {
 		switch (c) {
 		case 'D':
 			background = 1;
+			break;
+		case 'm':
+			modmask = parsemod(optarg);
+			break;
+		case 'k':
+			parsekey(optarg);
 			break;
 		case 's':
 			silent = 1;
@@ -395,7 +506,7 @@ main(int argc, char **argv)
 
 	if (argc > 0) {
 	bad_usage:
-		fprintf(stderr, "usage: sndiokeys [-Dsv] [-f device]\n");
+		fprintf(stderr, "usage: sndiokeys [-Dsv] [-f device] [-k key:func] [-m modifier,...]\n");
 		exit(1);
 	}
 
