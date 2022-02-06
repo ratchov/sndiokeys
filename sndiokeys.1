@@ -23,12 +23,11 @@
 control sndiod with hot-keys
 .Sh SYNOPSIS
 .Nm sndiokeys
+.Op Fl b Ar [mod+...]key:func
 .Op Fl D
 .Op Fl s
 .Op Fl v
 .Op Fl f Ar device
-.Op Fl k Ar key:func
-.Op Fl m Ar modifier,...
 .Sh DESCRIPTION
 .Nm
 registers hot-keys in
@@ -58,17 +57,15 @@ It exits when X session terminates.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds
-.It Fl D
-Daemonize.
-.It Fl f Ar device
-Audio device to control.
-.It Fl k Ar key:func
+.It Fl b Ar [mod+...]key:func
 Bind the given key to the given function.
 Key names are defined in
 .Pa /usr/X11R6/include/X11/keysymdef.h
 with the
 .Va XK_
 prefixes removed.
+The key may be preceded by modifiers, each followed by the plus sign.
+The following modifiers are supported: Control, Mod1, Mod2, Mod3, Mod4, Mod5.
 Functions are:
 .Pp
 .Bl -tag -width "cycle_device" -offset indent -compact
@@ -79,10 +76,10 @@ decrease audio output level
 .It cycle_device
 cycle through audio devices
 .El
-.It Fl m Ar modifier,...
-Use the given comma-separated modifier keys for all key bindings,
-The following modifiers are supported: Control, Mod1, Mod2, Mod3, Mod4, Mod5.
-Default modifiers are Control and Mod1.
+.It Fl D
+Daemonize.
+.It Fl f Ar device
+Audio device to control.
 .It Fl s
 Don't emit audible beep when audio device is changed.
 .It Fl v

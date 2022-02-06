@@ -51,11 +51,12 @@ struct modname {
 struct binding {
 	void (*func)(void);
 	char *name;
+	int modmask;
 	char *keysym;
 } binding_tab[] = {
-	{inc_level,	"inc_level",	"plus"},
-	{dec_level,	"dec_level",	"minus"},
-	{cycle_device,	"cycle_device",	"0"},
+	{inc_level, "inc_level", ControlMask | Mod1Mask, "plus"},
+	{dec_level, "dec_level", ControlMask | Mod1Mask, "minus"},
+	{cycle_device, "cycle_device", ControlMask | Mod1Mask, "0"},
 	{NULL, NULL}
 };
 
@@ -78,7 +79,6 @@ struct sioctl_hdl *hdl;
 char *dev_name;
 int verbose;
 int silent;
-int modmask = ControlMask | Mod1Mask;
 
 static void
 play_beep(void)
@@ -307,7 +307,7 @@ cycle_device(void)
  * register given hot-key in X
  */
 static void
-add_key(char *sym, void (*func)(void))
+add_key(int modmask, char *sym, void (*func)(void))
 {
 	struct key *key;
 	unsigned int i, scr, nscr;
@@ -354,7 +354,7 @@ grab_keys(void)
 	struct binding *b;
 
 	for (b = binding_tab; b->func != NULL; b++)
-		add_key(b->keysym, b->func);
+		add_key(b->modmask, b->keysym, b->func);
 }
 
 /*
@@ -383,67 +383,56 @@ streq(const char *data, size_t size, const char *cstr)
 	return strncmp(cstr, data, size) == 0 && cstr[size] == 0;
 }
 
-int
-parsemod(char *str)
+void
+parsekey(char *str)
 {
-	char *end, *p;
+	char *p, *end;
 	struct modname *mod;
-	int mask;
+	struct binding *b;
+	char *keysym;
+	size_t len;
+	int modmask;
 
-	mask = 0;
 	p = str;
-	while (*p != 0) {
-		end = p;
-		while (*end != 0 && *end != ',')
-			end++;
 
+	modmask = 0;
+	while (1) {
+		end = strchr(p, '+');
+		if (end == NULL)
+			break;
+		fprintf(stderr, "p = <%s>, end = <%s>\n", p, end);
 		mod = modname_tab;
 		while (1) {
 			if (mod->mask == 0) {
-				fprintf(stderr, "%s: bad modifiers\n", str);
+				fprintf(stderr, "%s: bad modifiers\n", p);
 				exit(1);
 			}
 			if (streq(p, end - p, mod->name)) {
-				mask |= mod->mask;
+				modmask |= mod->mask;
 				break;
 			}
 			mod++;
 		}
-
-		if (*end == 0)
-			break;
-
 		p = end + 1;
 	}
 
-	return mask;
-}
-
-void
-parsekey(char *str)
-{
-	char *p;
-	struct binding *b;
-	char *keysym;
-	size_t len;
-
-	p = strchr(str, ':');
-	if (p == NULL) {
+	end = strchr(p, ':');
+	if (end == NULL) {
 		fprintf(stderr, "%s: expected ':'\n", str);
 		exit(1);
 	}
 
-	len = p - str;
+	len = end - p;
 	keysym = malloc(len + 1);
 	if (keysym == NULL) {
 		perror("malloc");
 		exit(1);
 	}
-	memcpy(keysym, str, len);
+	memcpy(keysym, p, len);
 	keysym[len] = 0;
 
 	/* skip ':' */
-	p++;
+	p = end + 1;
 
 	b = binding_tab;
 	while (1) {
@@ -457,7 +446,10 @@ parsekey(char *str)
 		b++;
 	}
 
+	printf("key = %s, mask = 0x%x, func = %s\n", keysym, modmask, b->name);
+
 	b->keysym = keysym;
+	b->modmask = modmask;
 }
 
 int
@@ -477,25 +469,22 @@ main(int argc, char **argv)
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	while ((c = getopt(argc, argv, "Df:k:m:sv")) != -1) {
+	while ((c = getopt(argc, argv, "b:Df:m:sv")) != -1) {
 		switch (c) {
+		case 'b':
+			parsekey(optarg);
+			break;
 		case 'D':
 			background = 1;
 			break;
-		case 'm':
-			modmask = parsemod(optarg);
-			break;
-		case 'k':
-			parsekey(optarg);
+		case 'f':
+			dev_name = optarg;
 			break;
 		case 's':
 			silent = 1;
 			break;
 		case 'v':
 			verbose++;
-			break;
-		case 'f':
-			dev_name = optarg;
 			break;
 		default:
 			goto bad_usage;
@@ -506,7 +495,7 @@ main(int argc, char **argv)
 
 	if (argc > 0) {
 	bad_usage:
-		fprintf(stderr, "usage: sndiokeys [-Dsv] [-f device] [-k key:func] [-m modifier,...]\n");
+		fprintf(stderr, "usage: sndiokeys [-Dsv] [-b [[mod+...]key:func] [-f device]\n");
 		exit(1);
 	}
 
