@@ -236,7 +236,7 @@ change_level(int dir)
 			i->val = vol;
 			sioctl_setval(hdl, i->desc.addr, vol);
 		}
-        }
+	}
 }
 
 /*
