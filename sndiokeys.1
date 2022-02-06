@@ -53,15 +53,21 @@ It exits when X session terminates.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds
-.It Fl b Ar [mod+...]key:func
-Bind the given key to the given function.
+.It Fl b Ar [modifier+...]key:function
+Perform
+.Cm function
+whenever
+.Cm key
+is pressed while
+.Cm modifier
+keys are held down.
 Key names correspond to symbols defined in
 .Pa /usr/X11R6/include/X11/keysymdef.h
 with the
 .Cm XK_
 prefix removed.
-The key may be preceded by modifiers, each followed by the plus sign.
-The following modifiers are supported: Control, Mod1, Mod2, Mod3, Mod4, Mod5.
+Supported modifiers are: Control, Mod1, Mod2, Mod3, Mod4, and
+Mod5.
 Function names are:
 .Pp
 .Bl -tag -width "cycle_device" -offset indent -compact
