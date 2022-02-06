@@ -34,18 +34,14 @@ registers hot-keys in
 .Xr X 7
 to control
 .Xr sndiod 8 .
-Pressing the following keys while the
-Control and Alt keys are held down
-change
-.Xr sndiod 8
-controls as follows:
+The default key-bindings are as follows:
 .Pp
-.Bl -tag -width "XXXX" -offset indent -compact
-.It +
-increase audio output level
-.It -
-decrease audio output level
-.It 0
+.Bl -tag -width "Control+Mod1+minus" -offset indent -compact
+.It Control+Mod1+plus
+increase output level
+.It Control+Mod1+minus
+decrease output level
+.It Control+Mod1+0
 cycle through audio devices.
 .El
 .Pp
