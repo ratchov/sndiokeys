@@ -33,7 +33,7 @@
 
 static void inc_level(void);
 static void dec_level(void);
-static void cycle_device(void);
+static void cycle_dev(void);
 
 struct modname {
 	int mask;
@@ -56,7 +56,7 @@ struct binding {
 } binding_tab[] = {
 	{inc_level, "inc_level", ControlMask | Mod1Mask, "plus"},
 	{dec_level, "dec_level", ControlMask | Mod1Mask, "minus"},
-	{cycle_device, "cycle_device", ControlMask | Mod1Mask, "0"},
+	{cycle_dev, "cycle_dev", ControlMask | Mod1Mask, "0"},
 	{NULL, NULL}
 };
 
@@ -261,7 +261,7 @@ dec_level(void)
  * cycle server.device
  */
 static void
-cycle_device(void)
+cycle_dev(void)
 {
 	struct ctl *i, *j;
 
