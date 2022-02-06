@@ -55,14 +55,14 @@ The options are as follows:
 .Bl -tag -width Ds
 .It Fl b Ar [mod+...]key:func
 Bind the given key to the given function.
-Key names are defined in
+Key names correspond to symbols defined in
 .Pa /usr/X11R6/include/X11/keysymdef.h
 with the
-.Va XK_
-prefixes removed.
+.Cm XK_
+prefix removed.
 The key may be preceded by modifiers, each followed by the plus sign.
 The following modifiers are supported: Control, Mod1, Mod2, Mod3, Mod4, Mod5.
-Functions are:
+Function names are:
 .Pp
 .Bl -tag -width "cycle_device" -offset indent -compact
 .It inc_level
