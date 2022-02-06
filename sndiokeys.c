@@ -400,7 +400,6 @@ parsekey(char *str)
 		end = strchr(p, '+');
 		if (end == NULL)
 			break;
-		fprintf(stderr, "p = <%s>, end = <%s>\n", p, end);
 		mod = modname_tab;
 		while (1) {
 			if (mod->mask == 0) {
@@ -445,8 +444,6 @@ parsekey(char *str)
 
 		b++;
 	}
-
-	printf("key = %s, mask = 0x%x, func = %s\n", keysym, modmask, b->name);
 
 	b->keysym = keysym;
 	b->modmask = modmask;
