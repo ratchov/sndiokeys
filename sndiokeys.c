@@ -66,7 +66,6 @@ struct ctl {
 
 struct key {
 	struct key *next;
-	char *name;
 	unsigned int modmask;
 	KeySym sym;
 	KeyCode code;
@@ -315,15 +314,11 @@ grab_keys(void)
 
 	for (key = key_list; key != NULL; key = key->next) {
 
-		key->sym = XStringToKeysym(key->name);
-		if (key->sym == NoSymbol) {
-			fprintf(stderr, "%s: couldn't find keysym for key\n", key->name);
-			exit(1);
-		}
 		key->code = XKeysymToKeycode(dpy, key->sym);
 		key->map = XGetKeyboardMapping(dpy, key->code, 1, &nret);
 		if (nret <= ShiftMask) {
-			fprintf(stderr, "%s: couldn't get keymap for key\n", key->name);
+			fprintf(stderr, "%s: couldn't get keymap for key\n",
+			    XKeysymToString(key->sym));
 			exit(1);
 		}
 
@@ -362,7 +357,7 @@ ungrab_keys(void)
  * add key binding, removing old binding for the same function
  */
 void
-add_key(unsigned int modmask, char *name, void (*func)(void))
+add_key(unsigned int modmask, KeySym sym, void (*func)(void))
 {
 	struct key *key, **p;
 
@@ -381,7 +376,7 @@ add_key(unsigned int modmask, char *name, void (*func)(void))
 		perror("malloc: key");
 		exit(1);
 	}
-	key->name = name;
+	key->sym = sym;
 	key->modmask = modmask;
 	key->func = func;
 
@@ -396,8 +391,8 @@ parsekey(char *str)
 	char *p, *end;
 	struct modname *mod;
 	struct funcname *func;
-	char *keysym;
 	unsigned int modmask;
+	KeySym keysym;
 
 	p = str;
 
@@ -431,8 +426,11 @@ parsekey(char *str)
 	}
 	*end = 0;
 
-	/* no need to strdup() */
-	keysym = p;
+	keysym = XStringToKeysym(p);
+	if (keysym == NoSymbol) {
+		fprintf(stderr, "%s: unknowm key\n", p);
+		exit(1);
+	}
 
 	/* skip ':' */
 	p = end + 1;
@@ -440,7 +438,7 @@ parsekey(char *str)
 	func = funcname_tab;
 	while (1) {
 		if (func->func == NULL) {
-			fprintf(stderr, "%s: bad function name\n", str);
+			fprintf(stderr, "%s: bad function name\n", p);
 			exit(1);
 		}
 		if (strcmp(p, func->name) == 0)
@@ -466,9 +464,9 @@ main(int argc, char **argv)
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	add_key(ControlMask | Mod1Mask, "plus", inc_level);
-	add_key(ControlMask | Mod1Mask, "minus", dec_level);
-	add_key(ControlMask | Mod1Mask, "0", cycle_dev);
+	add_key(ControlMask | Mod1Mask, XK_plus, inc_level);
+	add_key(ControlMask | Mod1Mask, XK_minus, dec_level);
+	add_key(ControlMask | Mod1Mask, XK_0, cycle_dev);
 
 	while ((c = getopt(argc, argv, "b:Df:m:sv")) != -1) {
 		switch (c) {
