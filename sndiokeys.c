@@ -36,7 +36,7 @@ static void dec_level(void);
 static void cycle_dev(void);
 
 struct modname {
-	unsigned int mask;
+	unsigned int modmask;
 	char *name;
 } modname_tab[] = {
 	{ControlMask, "Control"},
@@ -361,7 +361,7 @@ add_key(unsigned int modmask, KeySym sym, void (*func)(void))
 {
 	struct key *key, **p;
 
-	/* delete bindings for the same function */
+	/* delete existing bindings for the same function */
 	p = &key_list;
 	while ((key = *p) != NULL) {
 		if (key->func == func) {
@@ -405,12 +405,12 @@ parsekey(char *str)
 
 		mod = modname_tab;
 		while (1) {
-			if (mod->mask == 0) {
+			if (mod->modmask == 0) {
 				fprintf(stderr, "%s: bad modifiers\n", str);
 				exit(1);
 			}
 			if (strcmp(p, mod->name) == 0) {
-				modmask |= mod->mask;
+				modmask |= mod->modmask;
 				break;
 			}
 			mod++;
@@ -457,8 +457,8 @@ main(int argc, char **argv)
 	XEvent xev;
 	int c, nfds;
 	int background;
-	struct ctl *i;
 	struct pollfd *pfds;
+	struct ctl *ctl;
 	struct key *key;
 
 	dev_name = SIO_DEVANY;
@@ -570,9 +570,9 @@ main(int argc, char **argv)
 
 	sioctl_close(hdl);
 
-	while ((i = ctl_list) != NULL) {
+	while ((ctl = ctl_list) != NULL) {
 		ctl_list = ctl_list->next;
-		free(i);
+		free(ctl);
 	}
 
 	while ((key = key_list) != NULL) {
