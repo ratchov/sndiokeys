@@ -36,7 +36,7 @@ static void dec_level(void);
 static void cycle_dev(void);
 
 struct modname {
-	int mask;
+	unsigned int mask;
 	char *name;
 } modname_tab[] = {
 	{ControlMask, "Control"},
@@ -67,7 +67,7 @@ struct ctl {
 struct key {
 	struct key *next;
 	char *name;
-	int modmask;
+	unsigned int modmask;
 	KeySym sym;
 	KeyCode code;
 	KeySym *map;
@@ -362,7 +362,7 @@ ungrab_keys(void)
  * add key binding, removing old binding for the same function
  */
 void
-add_key(int modmask, char *name, void (*func)(void))
+add_key(unsigned int modmask, char *name, void (*func)(void))
 {
 	struct key *key, **p;
 
@@ -397,7 +397,7 @@ parsekey(char *str)
 	struct modname *mod;
 	struct funcname *func;
 	char *keysym;
-	int modmask;
+	unsigned int modmask;
 
 	p = str;
 
