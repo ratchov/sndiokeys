@@ -48,15 +48,13 @@ struct modname {
 	{0, NULL}
 };
 
-struct binding {
+struct funcname {
 	void (*func)(void);
 	char *name;
-	int modmask;
-	char *keysym;
-} binding_tab[] = {
-	{inc_level, "inc_level", ControlMask | Mod1Mask, "plus"},
-	{dec_level, "dec_level", ControlMask | Mod1Mask, "minus"},
-	{cycle_dev, "cycle_dev", ControlMask | Mod1Mask, "0"},
+} funcname_tab[] = {
+	{inc_level, "inc_level"},
+	{dec_level, "dec_level"},
+	{cycle_dev, "cycle_dev"},
 	{NULL, NULL}
 };
 
@@ -68,6 +66,8 @@ struct ctl {
 
 struct key {
 	struct key *next;
+	char *name;
+	int modmask;
 	KeySym sym;
 	KeyCode code;
 	KeySym *map;
@@ -304,57 +304,40 @@ cycle_dev(void)
 }
 
 /*
- * register given hot-key in X
+ * register hot-keys
  */
 static void
-add_key(int modmask, char *sym, void (*func)(void))
+grab_keys(void)
 {
 	struct key *key;
 	unsigned int i, scr, nscr;
 	int nret;
 
-	key = malloc(sizeof(struct key));
-	if (key == NULL) {
-		perror("malloc");
-		exit(1);
-	}
+	for (key = key_list; key != NULL; key = key->next) {
 
-	key->sym = XStringToKeysym(sym);
-	if (key->sym == NoSymbol) {
-		fprintf(stderr, "%s: couldn't find keysym for key\n", sym);
-		exit(1);
-	}
-	key->func = func;
-	key->code = XKeysymToKeycode(dpy, key->sym);
-	key->map = XGetKeyboardMapping(dpy, key->code, 1, &nret);
-	if (nret <= ShiftMask) {
-		fprintf(stderr, "%s: couldn't get keymap for key\n", sym);
-		exit(1);
-	}
+		key->sym = XStringToKeysym(key->name);
+		if (key->sym == NoSymbol) {
+			fprintf(stderr, "%s: couldn't find keysym for key\n", key->name);
+			exit(1);
+		}
+		key->code = XKeysymToKeycode(dpy, key->sym);
+		key->map = XGetKeyboardMapping(dpy, key->code, 1, &nret);
+		if (nret <= ShiftMask) {
+			fprintf(stderr, "%s: couldn't get keymap for key\n", key->name);
+			exit(1);
+		}
 
-	nscr = ScreenCount(dpy);
-	for (i = 0; i <= 0xff; i++) {
-		if ((i & modmask) != 0)
-			continue;
-		for (scr = 0; scr != nscr; scr++) {
-			XGrabKey(dpy, key->code, i | modmask,
-			    RootWindow(dpy, scr), 1,
-			    GrabModeAsync, GrabModeAsync);
-
+		nscr = ScreenCount(dpy);
+		for (i = 0; i <= 0xff; i++) {
+			if ((i & key->modmask) != 0)
+				continue;
+			for (scr = 0; scr != nscr; scr++) {
+				XGrabKey(dpy, key->code, i | key->modmask,
+				    RootWindow(dpy, scr), 1,
+				    GrabModeAsync, GrabModeAsync);
+			}
 		}
 	}
-
-	key->next = key_list;
-	key_list = key;
-}
-
-static void
-grab_keys(void)
-{
-	struct binding *b;
-
-	for (b = binding_tab; b->func != NULL; b++)
-		add_key(b->modmask, b->keysym, b->func);
 }
 
 /*
@@ -366,10 +349,8 @@ ungrab_keys(void)
 	struct key *key;
 	unsigned int scr, nscr;
 
-	while ((key = key_list) != NULL) {
-		key_list = key_list->next;
+	for (key = key_list; key != NULL; key = key->next) {
 		XFree(key->map);
-		free(key);
 	}
 
 	nscr = ScreenCount(dpy);
@@ -377,20 +358,45 @@ ungrab_keys(void)
 		XUngrabKey(dpy, AnyKey, AnyModifier, RootWindow(dpy, scr));
 }
 
-int
-streq(const char *data, size_t size, const char *cstr)
+/*
+ * add key binding, removing old binding for the same function
+ */
+void
+add_key(int modmask, char *name, void (*func)(void))
 {
-	return strncmp(cstr, data, size) == 0 && cstr[size] == 0;
+	struct key *key, **p;
+
+	/* delete bindings for the same function */
+	p = &key_list;
+	while ((key = *p) != NULL) {
+		if (key->func == func) {
+			*p = key->next;
+			free(key);
+		} else
+			p = &key->next;
+	}
+
+	key = malloc(sizeof(struct key));
+	if (key == NULL) {
+		perror("malloc: key");
+		exit(1);
+	}
+	key->name = name;
+	key->modmask = modmask;
+	key->func = func;
+
+	key->next = NULL;
+	*p = key;
 }
+
 
 void
 parsekey(char *str)
 {
 	char *p, *end;
 	struct modname *mod;
-	struct binding *b;
+	struct funcname *func;
 	char *keysym;
-	size_t len;
 	int modmask;
 
 	p = str;
@@ -400,18 +406,21 @@ parsekey(char *str)
 		end = strchr(p, '+');
 		if (end == NULL)
 			break;
+		*end = 0;
+
 		mod = modname_tab;
 		while (1) {
 			if (mod->mask == 0) {
-				fprintf(stderr, "%s: bad modifiers\n", p);
+				fprintf(stderr, "%s: bad modifiers\n", str);
 				exit(1);
 			}
-			if (streq(p, end - p, mod->name)) {
+			if (strcmp(p, mod->name) == 0) {
 				modmask |= mod->mask;
 				break;
 			}
 			mod++;
 		}
+
 		p = end + 1;
 	}
 
@@ -420,33 +429,27 @@ parsekey(char *str)
 		fprintf(stderr, "%s: expected ':'\n", str);
 		exit(1);
 	}
+	*end = 0;
 
-	len = end - p;
-	keysym = malloc(len + 1);
-	if (keysym == NULL) {
-		perror("malloc");
-		exit(1);
-	}
-	memcpy(keysym, p, len);
-	keysym[len] = 0;
+	/* no need to strdup() */
+	keysym = p;
 
 	/* skip ':' */
 	p = end + 1;
 
-	b = binding_tab;
+	func = funcname_tab;
 	while (1) {
-		if (b->func == NULL) {
-			fprintf(stderr, "%s: bad function name\n", p);
+		if (func->func == NULL) {
+			fprintf(stderr, "%s: bad function name\n", str);
 			exit(1);
 		}
-		if (strcmp(p, b->name) == 0)
+		if (strcmp(p, func->name) == 0)
 			break;
 
-		b++;
+		func++;
 	}
 
-	b->keysym = keysym;
-	b->modmask = modmask;
+	add_key(modmask, keysym, func->func);
 }
 
 int
@@ -460,12 +463,13 @@ main(int argc, char **argv)
 	struct pollfd *pfds;
 	struct key *key;
 
-	/*
-	 * parse command line options
-	 */
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
+	add_key(ControlMask | Mod1Mask, "plus", inc_level);
+	add_key(ControlMask | Mod1Mask, "minus", dec_level);
+	add_key(ControlMask | Mod1Mask, "0", cycle_dev);
+
 	while ((c = getopt(argc, argv, "b:Df:m:sv")) != -1) {
 		switch (c) {
 		case 'b':
@@ -571,6 +575,11 @@ main(int argc, char **argv)
 	while ((i = ctl_list) != NULL) {
 		ctl_list = ctl_list->next;
 		free(i);
+	}
+
+	while ((key = key_list) != NULL) {
+		key_list = key_list->next;
+		free(key);
 	}
 
 	return 0;
