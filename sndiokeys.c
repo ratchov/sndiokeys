@@ -492,7 +492,11 @@ main(int argc, char **argv)
 
 	if (argc > 0) {
 	bad_usage:
-		fprintf(stderr, "usage: sndiokeys [-Dsv] [-b [[mod+...]key:func] [-f device]\n");
+		fputs("usage: sndiokeys "
+		    "[-Dsv] "
+		    "[-b [[mod+...]key:func] "
+		    "[-f device]\n",
+		    stderr);
 		exit(1);
 	}
 
