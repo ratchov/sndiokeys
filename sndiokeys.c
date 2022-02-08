@@ -23,6 +23,7 @@
 #include <string.h>
 #include <sndio.h>
 #include <X11/Xlib.h>
+#include <X11/Xproto.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 
@@ -74,6 +75,9 @@ struct key {
 } *key_list;
 
 Display	*dpy;
+int (*error_handler_xlib)(Display *, XErrorEvent *);
+KeySym error_keysym;
+
 struct sioctl_hdl *hdl;
 char *dev_name;
 int verbose;
@@ -303,6 +307,23 @@ cycle_dev(void)
 }
 
 /*
+ * error handler for Xlib functions. Print a meaningful
+ * message for well-known errors and exit.
+ */
+int
+error_handler(Display *d, XErrorEvent *e)
+{
+	if (e->request_code == X_GrabKey &&
+	    e->error_code == BadAccess) {
+		fprintf(stderr, "Key \"%s\" already grabbed by another program\n",
+		    XKeysymToString(error_keysym));
+		exit(1);
+	}
+
+	return error_handler_xlib(d, e);
+}
+
+/*
  * register hot-keys
  */
 static void
@@ -322,6 +343,7 @@ grab_keys(void)
 			exit(1);
 		}
 
+		error_keysym = key->sym;
 		nscr = ScreenCount(dpy);
 		for (i = 0; i <= 0xff; i++) {
 			if ((i & key->modmask) != 0)
@@ -332,6 +354,7 @@ grab_keys(void)
 				    GrabModeAsync, GrabModeAsync);
 			}
 		}
+		XSync(dpy, False);
 	}
 }
 
@@ -526,6 +549,7 @@ main(int argc, char **argv)
 	for (scr = 0; scr != ScreenCount(dpy); scr++)
 		XSelectInput(dpy, RootWindow(dpy, scr), KeyPress);
 
+	error_handler_xlib = XSetErrorHandler(error_handler);
 	grab_keys();
 
 	if (background) {
