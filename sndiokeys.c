@@ -28,6 +28,26 @@
 #include <X11/keysym.h>
 
 /*
+ * Define mask of modifiers we care about.
+ *
+ * Example, the Control modifier: if add hot-key for Alt+F1, we want to
+ * leave Control+F1 to other programs, so we require Control key to be down.
+ * Similarly, we ignore Lock modifier (Caps lock) because we want our
+ * hot-key to work no matter what the Caps Lock state is.
+ *
+ * Available modifers are:
+ *	Shift
+ *	Lock (Caps Lock key)
+ *	Control
+ *	Mod1 (Alt or Meta keys)
+ * 	Mod2 (Num Lock key)
+ * 	Mod3 (unused, sometimes Scroll Lock key)
+ *	Mod4 (Windows key)
+ *	Mod5 (Mode switch)
+ */
+#define MODMASK		(ControlMask | Mod1Mask | Mod4Mask)
+
+/*
  * number of level steps between 0 and 1
  */
 #define NSTEP		20
@@ -42,10 +62,7 @@ struct modname {
 } modname_tab[] = {
 	{ControlMask, "Control"},
 	{Mod1Mask, "Mod1"},
-	{Mod2Mask, "Mod2"},
-	{Mod3Mask, "Mod3"},
 	{Mod4Mask, "Mod4"},
-	{Mod5Mask, "Mod5"},
 	{0, NULL}
 };
 
@@ -343,13 +360,15 @@ grab_keys(void)
 			exit(1);
 		}
 
+		/* modifiers that we need to be zero (control, alt, windows) */
+
 		error_keysym = key->sym;
 		nscr = ScreenCount(dpy);
 		for (i = 0; i <= 0xff; i++) {
-			if ((i & key->modmask) != 0)
+			if ((i & MODMASK) != key->modmask)
 				continue;
 			for (scr = 0; scr != nscr; scr++) {
-				XGrabKey(dpy, key->code, i | key->modmask,
+				XGrabKey(dpy, key->code, i,
 				    RootWindow(dpy, scr), 1,
 				    GrabModeAsync, GrabModeAsync);
 			}
