@@ -99,6 +99,7 @@ struct sioctl_hdl *hdl;
 char *dev_name;
 int verbose;
 int silent;
+int beep_pending;
 
 static void
 play_beep(void)
@@ -257,6 +258,8 @@ change_level(int dir)
 			sioctl_setval(hdl, i->desc.addr, vol);
 		}
 	}
+	if (!silent)
+		beep_pending = 1;
 }
 
 /*
@@ -320,7 +323,7 @@ cycle_dev(void)
 	sioctl_setval(hdl, j->desc.addr, 1);
 
 	if (!silent)
-		play_beep();
+		beep_pending = 1;
 }
 
 /*
@@ -598,6 +601,16 @@ main(int argc, char **argv)
 					key->func();
 			}
 		}
+
+		/*
+		 * keyboard auto-repeat may try to play beep multiple times,
+		 * play it only once
+		 */
+		if (beep_pending) {
+			play_beep();
+			beep_pending = 0;
+		}
+
 		nfds = (hdl != NULL) ? sioctl_pollfd(hdl, pfds, 0) : 0;
 		pfds[nfds].fd = ConnectionNumber(dpy);
 		pfds[nfds].events = POLLIN;
