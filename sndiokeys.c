@@ -616,9 +616,14 @@ main(int argc, char **argv)
 		pfds[nfds].events = POLLIN;
 		while (poll(pfds, nfds + 1, -1) < 0 && errno == EINTR)
 			; /* nothing */
-		if ((sioctl_revents(hdl, pfds) & POLLHUP) ||
-		    (pfds[nfds].revents & POLLHUP))
+		if (sioctl_revents(hdl, pfds) & POLLHUP) {
+			fprintf(stderr, "sndio: hup\n");
 			break;
+		}
+		if (pfds[nfds].revents & POLLHUP) {
+			fprintf(stderr, "x11: hup\n");
+			break;
+		}
 	}
 
 	ungrab_keys();
