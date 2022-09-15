@@ -1,0 +1,92 @@
+#!/bin/sh
+
+#
+# display help screeen
+#
+help() {
+cat << END
+Usage: configure [options]
+--prefix=DIR			set arch independent install prefix to DIR [$prefix]
+--exec-prefix=DIR		set arch dependent install prefix to DIR [\$prefix]
+--bindir=DIR			install executables in DIR [\$exec_prefix/bin]
+--mandir=DIR			install man pages in DIR [\$prefix/man]
+END
+}
+
+#
+# defaults
+#
+prefix=/usr/local			# where to install sndiokeys
+unset vars				# variables passed as arguments
+unset exec_prefix			# prefix for arch. independent files
+unset bindir				# path where to install binaries
+unset mandir				# path where to install man pages
+unset defs				# no extra #defines
+unset ldadd				# no extra libraries (-l options)
+
+#
+# guess OS-specific parameters
+#
+case `uname` in
+	Linux)
+		ldadd="-lrt -lbsd"
+		;;
+esac
+
+# shell word separator (none)
+IFS=''
+
+# sed-quoted new-line
+nl='\
+'
+
+for i; do
+	case "$i" in
+	--prefix=*)
+		prefix="${i#--prefix=}"
+		shift;;
+	--exec-prefix=*)
+		exec_prefix="${i#--exec-prefix=}"
+		shift;;
+	--bindir=*)
+		bindir="${i#--bindir=}"
+		shift;;
+	--mandir=*)
+		mandir="${i#--mandir=}"
+		shift;;
+	CC=*|CFLAGS=*|LDFLAGS=*)
+		vars="$vars$i$nl"
+		shift;;
+	*)
+		help
+		exit 1
+		;;
+	esac
+done
+
+#
+# if $xxxdir is not specified, define it to $prefix/xxx
+#
+exec_prefix="${exec_prefix:-$prefix}"
+bindir="${bindir:-$exec_prefix/bin}"
+mandir="${mandir:-$prefix/share/man}"
+
+for f in Makefile
+do
+	sed \
+	-e "s:@bindir@:$bindir:" \
+	-e "s:@mandir@:$mandir:" \
+	-e "s:@defs@:$defs:" \
+	-e "s:@ldadd@:$ldadd:" \
+	-e "s:@vars@:${vars}:" \
+	< $f.in > $f
+done
+
+cat <<EOF
+
+bindir................... $bindir
+mandir................... $mandir
+
+Do "make && make install" to compile and install sndiokeys
+
+EOF
