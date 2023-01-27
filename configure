@@ -69,7 +69,7 @@ done
 #
 exec_prefix="${exec_prefix:-$prefix}"
 bindir="${bindir:-$exec_prefix/bin}"
-mandir="${mandir:-$prefix/share/man}"
+mandir="${mandir:-$prefix/man}"
 
 for f in Makefile
 do
