@@ -35,6 +35,10 @@ registers hot-keys in
 .Xr X 7
 to control
 .Xr sndiod 8 .
+It can be used to replace the
+.Xr X 7
+keyboard bells by audible beeps on the audio device.
+.Pp
 The default key-bindings are as follows:
 .Pp
 .Bl -tag -width "Control+Mod1+minus" -offset indent -compact
@@ -45,11 +49,6 @@ decrease output level
 .It Control+Mod1+0
 cycle through audio devices.
 .El
-.Pp
-.Nm
-can be used to replace the
-.Xr X 7
-keyboard bells by audible beeps on the audio device.
 .Pp
 .Nm
 is meant to be started as background process by
