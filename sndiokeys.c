@@ -330,7 +330,7 @@ cycle_dev(void)
  * error handler for Xlib functions. Print a meaningful
  * message for well-known errors and exit.
  */
-int
+static int
 error_handler(Display *d, XErrorEvent *e)
 {
 	if (e->request_code == X_GrabKey &&
@@ -401,7 +401,7 @@ ungrab_keys(void)
 /*
  * add key binding, removing old binding for the same function
  */
-void
+static void
 add_key(unsigned int modmask, KeySym sym, void (*func)(void))
 {
 	struct key *key, **p;
@@ -430,7 +430,7 @@ add_key(unsigned int modmask, KeySym sym, void (*func)(void))
 }
 
 
-void
+static void
 parsekey(char *str)
 {
 	char *p, *end;
