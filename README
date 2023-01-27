@@ -1,15 +1,17 @@
-sndiokeys registers hot-keys in X to control sndiod(8) server.
-The default key bindings are as follows:
+sndiokeys - control sndiod with hot-keys and play keyboard bells
 
-Control+Mod1+plus	decrease output level
-Control+Mod1+minus	increase output level
-Control+Mod1+0		cycle through audio devices
+sndiokeys registers hot-keys in X(7) to control sndiod(8). It can be
+used to replace the X(7) keyboard bells by audible beeps on the
+audio device.
+
+The default key-bindings are as follows:
+
+Control+Mod1+plus	increase output level
+Control+Mod1+minus	decrease output level
+Control+Mod1+0		cycle through audio devices.
 
 Mod1 is the Alt key on most keyboards. Key bindings
 are configurable and multimedia audio keys may be used instead.
-
-sndiokeys can be used to replace the X(7) keyboard bells by audible
-beeps on the audio device.
 
 sndiokeys is meant to be started as background process by startx(1) or
 the display manager session startup scripts.  It exits when X session
