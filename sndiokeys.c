@@ -547,6 +547,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	error_handler_xlib = XSetErrorHandler(error_handler);
+
 	dpy = XOpenDisplay(NULL);
 	if (dpy == 0) {
 		fprintf(stderr, "Couldn't open display\n");
@@ -571,7 +573,6 @@ main(int argc, char **argv)
 	for (scr = 0; scr != ScreenCount(dpy); scr++)
 		XSelectInput(dpy, RootWindow(dpy, scr), KeyPress);
 
-	error_handler_xlib = XSetErrorHandler(error_handler);
 	grab_keys();
 
 	if (background) {
