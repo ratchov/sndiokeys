@@ -8,6 +8,9 @@ Control+Mod1+0		cycle through audio devices
 Mod1 is the Alt key on most keyboards. Key bindings
 are configurable and multimedia audio keys may be used instead.
 
+sndiokeys can be used to replace the X(7) keyboard bells by audible
+beeps on the audio device.
+
 sndiokeys is meant to be started as background process by startx(1) or
 the display manager session startup scripts.  It exits when X session
 terminates.

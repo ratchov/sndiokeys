@@ -26,6 +26,7 @@
 #include <X11/Xproto.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#include <X11/XKBlib.h>
 
 /*
  * Define mask of modifiers we care about.
@@ -100,6 +101,7 @@ char *dev_name;
 int verbose;
 int silent;
 int beep_pending;
+int audible_bell;
 
 static void
 play_beep(void)
@@ -505,6 +507,7 @@ main(int argc, char **argv)
 	struct pollfd *pfds;
 	struct ctl *ctl;
 	struct key *key;
+	int xkb, xkb_maj, xkb_ev_base, xkb_auto_controls, xkb_auto_values;
 
 	dev_name = SIO_DEVANY;
 	verbose = 0;
@@ -513,8 +516,11 @@ main(int argc, char **argv)
 	add_key(ControlMask | Mod1Mask, XK_minus, dec_level);
 	add_key(ControlMask | Mod1Mask, XK_0, cycle_dev);
 
-	while ((c = getopt(argc, argv, "b:Df:m:sv")) != -1) {
+	while ((c = getopt(argc, argv, "ab:Df:m:sv")) != -1) {
 		switch (c) {
+		case 'a':
+			audible_bell = 1;
+			break;
 		case 'b':
 			parsekey(optarg);
 			break;
@@ -540,7 +546,7 @@ main(int argc, char **argv)
 	if (argc > 0) {
 	bad_usage:
 		fputs("usage: sndiokeys "
-		    "[-Dsv] "
+		    "[-aDsv] "
 		    "[-b [[mod+...]key:func] "
 		    "[-f device]\n",
 		    stderr);
@@ -553,6 +559,22 @@ main(int argc, char **argv)
 	if (dpy == 0) {
 		fprintf(stderr, "Couldn't open display\n");
 		exit(1);
+	}
+
+	xkb = 0;
+	if (audible_bell) {
+		if (XkbQueryExtension(dpy, NULL, &xkb_ev_base, NULL, NULL, NULL)) {
+			XkbSelectEvents(dpy, XkbUseCoreKbd,
+			    XkbBellNotifyMask, XkbBellNotifyMask);
+			xkb_auto_controls = XkbAudibleBellMask;
+			xkb_auto_values = XkbAudibleBellMask;
+			XkbSetAutoResetControls(dpy,
+			    XkbAudibleBellMask, &xkb_auto_controls, &xkb_auto_values);
+			XkbChangeEnabledControls(dpy, XkbUseCoreKbd,
+			    XkbAudibleBellMask, 0);
+			xkb = 1;
+		} else
+			fprintf(stderr, "Audible bell not suppored by X server\n");
 	}
 
 	hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
@@ -593,6 +615,12 @@ main(int argc, char **argv)
 					fprintf(stderr, "keyboard remapped\n");
 				ungrab_keys();
 				grab_keys();
+				continue;
+			}
+			if (xkb && xev.type == xkb_ev_base &&
+			    ((XkbEvent *)&xev)->any.xkb_type == XkbBellNotify) {
+				beep_pending = 1;
+				continue;
 			}
 			if (xev.type != KeyPress)
 				continue;

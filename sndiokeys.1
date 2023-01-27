@@ -20,9 +20,10 @@
 .Sh NAME
 .Nm sndiokeys
 .Nd
-control sndiod with hot-keys
+control sndiod with hot-keys and play keyboard bells
 .Sh SYNOPSIS
 .Nm sndiokeys
+.Op Fl a
 .Op Fl b Ar [mod+...]key:func
 .Op Fl D
 .Op Fl s
@@ -46,6 +47,11 @@ cycle through audio devices.
 .El
 .Pp
 .Nm
+can be used to replace the
+.Xr X 7
+keyboard bells by audible beeps on the audio device.
+.Pp
+.Nm
 is meant to be started as background process by
 .Xr startx 1
 or the display manager session startup scripts.
@@ -53,6 +59,10 @@ It exits when X session terminates.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds
+.It Fl a
+Play audible beeps on the audio device in place of the
+.Xr X 7
+keyboard bells.
 .It Fl b Ar [modifier+...]key:function
 Perform
 .Cm function
