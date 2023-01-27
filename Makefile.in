@@ -1,14 +1,8 @@
 # extra includes paths (-I options)
-INCLUDE = -I/usr/X11R6/include 
+INCLUDE = @sndio_inc@ @x11_inc@
 
 # extra libraries paths (-L options)
-LIB = -L/usr/X11R6/lib
-
-# extra defines (-D options)
-DEFS = @defs@
-
-# extra libraries (-l options)
-LDADD = @ldadd@ -lX11 -lsndio
+LIB = @sndio_lib@ @x11_lib@
 
 # variables defined on configure script command line (if any)
 @vars@

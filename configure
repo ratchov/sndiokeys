@@ -21,8 +21,10 @@ unset vars				# variables passed as arguments
 unset exec_prefix			# prefix for arch. independent files
 unset bindir				# path where to install binaries
 unset mandir				# path where to install man pages
-unset defs				# no extra #defines
-unset ldadd				# no extra libraries (-l options)
+sndio_inc=`pkg-config --cflags sndio`	# extra -I for X11
+sndio_lib=`pkg-config --libs sndio`	# extra -L and -l for X11
+x11_inc=`pkg-config --cflags x11`	# extra -I for X11
+x11_lib=`pkg-config --libs x11`		# extra -L and -l for X11
 
 #
 # guess OS-specific parameters
@@ -79,6 +81,10 @@ do
 	-e "s:@defs@:$defs:" \
 	-e "s:@ldadd@:$ldadd:" \
 	-e "s:@vars@:${vars}:" \
+	-e "s:@sndio_inc@:${sndio_inc}:" \
+	-e "s:@sndio_lib@:${sndio_lib}:" \
+	-e "s:@x11_inc@:${x11_inc}:" \
+	-e "s:@x11_lib@:${x11_lib}:" \
 	< $f.in > $f
 done
 
