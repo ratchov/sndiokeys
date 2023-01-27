@@ -21,6 +21,8 @@ PROG = sndiokeys
 MAN1 = sndiokeys.1
 OBJS = sndiokeys.o
 
+all:		sndiokeys
+
 sndiokeys:	${OBJS}
 		${CC} ${LDFLAGS} -o ${PROG} ${OBJS} ${LIB} ${LDADD}
 
