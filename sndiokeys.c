@@ -38,10 +38,6 @@
  */
 #define NSTEP		20
 
-static void inc_level(void);
-static void dec_level(void);
-static void cycle_dev(void);
-
 struct modname {
 	unsigned int modmask;
 	char *name;
@@ -50,16 +46,6 @@ struct modname {
 	{Mod1Mask, "Mod1"},
 	{Mod4Mask, "Mod4"},
 	{0, NULL}
-};
-
-struct funcname {
-	void (*func)(void);
-	char *name;
-} funcname_tab[] = {
-	{inc_level, "inc_level"},
-	{dec_level, "dec_level"},
-	{cycle_dev, "cycle_dev"},
-	{NULL, NULL}
 };
 
 struct ctl {
@@ -74,7 +60,9 @@ struct key {
 	KeySym sym;
 	KeyCode code;
 	KeySym *map;
-	void (*func)(void);
+	char *name;
+	char *func;
+	int dir;
 } *key_list;
 
 Display	*dpy;
@@ -150,6 +138,85 @@ err_close:
 }
 
 /*
+ * compare two sioctl_desc structures, used to sort infolist
+ */
+static int
+cmpdesc(struct sioctl_desc *d1, struct sioctl_desc *d2)
+{
+	int res;
+
+	res = strcmp(d1->group, d2->group);
+	if (res != 0)
+		return res;
+	res = strcmp(d1->node0.name, d2->node0.name);
+	if (res != 0)
+		return res;
+	res = d1->type - d2->type;
+	if (res != 0)
+		return res;
+	res = strcmp(d1->func, d2->func);
+	if (res != 0)
+		return res;
+	res = d1->node0.unit - d2->node0.unit;
+	if (d1->type == SIOCTL_SEL) {
+		if (res != 0)
+			return res;
+		res = strcmp(d1->node1.name, d2->node1.name);
+		if (res != 0)
+			return res;
+		res = d1->node1.unit - d2->node1.unit;
+	}
+	return res;
+}
+
+/*
+ * skip all parameters with the same group, name, and func
+ */
+static struct ctl *
+nextctl(struct ctl *i)
+{
+	char *str, *group, *func;
+	int unit;
+
+	group = i->desc.group;
+	func = i->desc.func;
+	str = i->desc.node0.name;
+	unit = i->desc.node0.unit;
+	for (i = i->next; i != NULL; i = i->next) {
+		if (strcmp(i->desc.group, group) != 0 ||
+		    strcmp(i->desc.node0.name, str) != 0 ||
+		    strcmp(i->desc.func, func) != 0 ||
+		    i->desc.node0.unit != unit)
+			return i;
+	}
+	return NULL;
+}
+
+/*
+ * move to the next selector entry or retrun NULL
+ */
+static struct ctl *
+nextent(struct ctl *i)
+{
+	char *str, *group, *func;
+	int unit;
+
+	group = i->desc.group;
+	func = i->desc.func;
+	str = i->desc.node0.name;
+	unit = i->desc.node0.unit;
+	for (i = i->next; i != NULL; i = i->next) {
+		if (strcmp(i->desc.group, group) != 0 ||
+		    strcmp(i->desc.node0.name, str) != 0 ||
+		    strcmp(i->desc.func, func) != 0)
+			return NULL;
+		if (i->desc.node0.unit == unit)
+			return i;
+	}
+	return NULL;
+}
+
+/*
  * sndio call-back for added/removed controls
  */
 static void
@@ -171,12 +238,18 @@ ondesc(void *unused, struct sioctl_desc *desc, int val)
 	switch (desc->type) {
 	case SIOCTL_NUM:
 	case SIOCTL_SW:
-	case SIOCTL_VEC:
-	case SIOCTL_LIST:
 	case SIOCTL_SEL:
 		break;
 	default:
 		return;
+	}
+
+	/*
+	 * find the right position to insert the new widget
+	 */
+	for (pi = &ctl_list; (i = *pi) != NULL; pi = &i->next) {
+		if (cmpdesc(desc, &i->desc) <= 0)
+			break;
 	}
 
 	i = malloc(sizeof(struct ctl));
@@ -198,6 +271,9 @@ onval(void *unused, unsigned int addr, unsigned int val)
 {
 	struct ctl *i, *j;
 
+	if (verbose)
+		fprintf(stderr, "onval: %d -> %d\n", addr, val);
+
 	i = ctl_list;
 	for (;;) {
 		if (i == NULL)
@@ -218,38 +294,27 @@ onval(void *unused, unsigned int addr, unsigned int val)
 		}
 	} else
 		i->val = val;
+
 }
 
-/*
- * change output.level control by given increment
- */
 static void
-change_level(int dir)
+setval_sel(struct ctl *first, int dir)
 {
-	int incr, vol;
-	struct ctl *i;
+	struct ctl *cur, *next;
 
-	for (i = ctl_list; i != NULL; i = i->next) {
-		if (i->desc.group[0] != 0 ||
-		    strcmp(i->desc.node0.name, "output") != 0 ||
-		    strcmp(i->desc.func, "level") != 0)
-			continue;
+	if (dir != 0)
+		return;
 
-		incr = ((int)i->desc.maxval + NSTEP - 1) / NSTEP;
-		vol = i->val + dir * incr;
-		if (vol < 0)
-			vol = 0;
-		if (vol > i->desc.maxval)
-			vol = i->desc.maxval;
-		if (i->val != vol) {
-			if (verbose)
-				fprintf(stderr, "setting level to %d\n", vol);
-			i->val = vol;
-			sioctl_setval(hdl, i->desc.addr, vol);
+	/* find the current entry */
+
+	cur = first;
+	while (cur->val == 0) {
+		cur = nextent(cur);
+		if (cur == NULL) {
+			fprintf(stderr, "no current value\n");
+			return;
 		}
 	}
-<<<<<<< HEAD
-=======
 
 	/* find the next entry */
 
@@ -295,73 +360,32 @@ setval_num(struct ctl *i, int dir)
 
 	i->val = val;
 	sioctl_setval(hdl, i->desc.addr, val);
->>>>>>> d133312 (Style tweaks)
 	if (!silent)
 		beep_pending = 1;
 }
 
 /*
- * increase output.level
+ * change the control
  */
 static void
-inc_level(void)
+setval(char *name, char *func, int dir)
 {
-	change_level(1);
-}
-
-/*
- * increase output.level
- */
-static void
-dec_level(void)
-{
-	change_level(-1);
-}
-
-/*
- * cycle server.device
- */
-static void
-cycle_dev(void)
-{
-	struct ctl *i, *j;
+	struct ctl *i;
 
 	i = ctl_list;
 	while (1) {
 		if (i == NULL)
 			return;
 		if (i->desc.group[0] == 0 &&
-		    strcmp(i->desc.node0.name, "server") == 0 &&
-		    strcmp(i->desc.func, "device") == 0 &&
-		    i->val == 1)
-			break;
-		i = i->next;
+		    strcmp(i->desc.node0.name, name) == 0 &&
+		    strcmp(i->desc.func, func) == 0) {
+			if (i->desc.type == SIOCTL_SEL)
+				setval_sel(i, dir);
+			else
+				setval_num(i, dir);
+		}
+		i = nextctl(i);
 	}
-
-	j = i;
-	while (1) {
-		j = j->next;
-		if (j == NULL)
-			j = ctl_list;
-		if (j->desc.addr == i->desc.addr)
-			return;
-		if (j->desc.group[0] == 0 &&
-		    strcmp(j->desc.node0.name, "server") == 0 &&
-		    strcmp(j->desc.func, "device") == 0 &&
-		    j->val == 0)
-			break;
-	}
-
-	if (verbose)
-		fprintf(stderr, "setting device to %s\n", j->desc.node1.name);
-
-	i->val = 0;
-	j->val = 1;
-
-	sioctl_setval(hdl, j->desc.addr, 1);
-
-	if (!silent)
-		beep_pending = 1;
 }
 
 /*
@@ -444,14 +468,15 @@ ungrab_keys(void)
  * add key binding, removing old binding for the same function
  */
 static void
-add_key(unsigned int modmask, KeySym sym, void (*func)(void))
+add_key(unsigned int modmask, KeySym sym, char *name, char *func, int dir)
 {
 	struct key *key, **p;
 
 	/* delete existing bindings for the same function */
 	p = &key_list;
 	while ((key = *p) != NULL) {
-		if (key->func == func) {
+		if (strcmp(key->name, name) == 0 &&
+		    strcmp(key->func, func) == 0 && key->dir == dir) {
 			*p = key->next;
 			free(key);
 		} else
@@ -465,7 +490,9 @@ add_key(unsigned int modmask, KeySym sym, void (*func)(void))
 	}
 	key->sym = sym;
 	key->modmask = modmask;
+	key->name = name;
 	key->func = func;
+	key->dir = dir;
 
 	key->next = NULL;
 	*p = key;
@@ -479,11 +506,18 @@ add_key(unsigned int modmask, KeySym sym, void (*func)(void))
 static void
 parsekey(char *str)
 {
-	char *p, *end;
+	char *p, *end, *name, *func;
 	struct modname *mod;
-	struct funcname *func;
 	unsigned int modmask;
 	KeySym keysym;
+	int dir;
+
+	name = strchr(str, ':');
+	if (name == NULL) {
+		fprintf(stderr, "%s: expected ':'\n", str);
+		exit(1);
+	}
+	*name++ = 0;
 
 	p = str;
 
@@ -497,7 +531,7 @@ parsekey(char *str)
 		mod = modname_tab;
 		while (1) {
 			if (mod->modmask == 0) {
-				fprintf(stderr, "%s: bad modifiers\n", str);
+				fprintf(stderr, "%s: bad modifier\n", p);
 				exit(1);
 			}
 			if (strcmp(p, mod->name) == 0) {
@@ -510,35 +544,51 @@ parsekey(char *str)
 		p = end + 1;
 	}
 
-	end = strchr(p, ':');
-	if (end == NULL) {
-		fprintf(stderr, "%s: expected ':'\n", str);
-		exit(1);
-	}
-	*end = 0;
-
 	keysym = XStringToKeysym(p);
 	if (keysym == NoSymbol) {
 		fprintf(stderr, "%s: unknowm key\n", p);
 		exit(1);
 	}
 
-	/* skip ':' */
-	p = end + 1;
-
-	func = funcname_tab;
-	while (1) {
-		if (func->func == NULL) {
-			fprintf(stderr, "%s: bad function name\n", p);
-			exit(1);
-		}
-		if (strcmp(p, func->name) == 0)
-			break;
-
-		func++;
+	/*
+	 * compat with old versions
+	 */
+	if (strcmp(name, "inc_level") == 0) {
+		add_key(modmask, keysym, "output", "level", 1);
+		return;
+	} else if (strcmp(name, "dec_level") == 0) {
+		add_key(modmask, keysym, "output", "level", -1);
+		return;
+	} else if (strcmp(name, "cycle_dev") == 0) {
+		add_key(modmask, keysym, "server", "device", 0);
+		return;
 	}
 
-	add_key(modmask, keysym, func->func);
+	func = strchr(name, '.');
+	if (func == NULL) {
+		fprintf(stderr, "%s: expected '.'\n", name);
+		exit(1);
+	}
+	*func++ = 0;
+
+	if ((end = strchr(func, '+')) != NULL) {
+		dir = 1;
+	} else if ((end = strchr(func, '-')) != NULL) {
+		dir = -1;
+	} else if ((end = strchr(func, '!')) != NULL) {
+		dir = 0;
+	} else {
+		fprintf(stderr, "%s: expected '+', '-' or '!'\n", end);
+		exit(1);
+	}
+	*end++ = 0;
+
+	if (*end != 0) {
+		fprintf(stderr, "%s: junk at end of the argument\n", end);
+		exit(1);
+	}
+
+	add_key(modmask, keysym, name, func, dir);
 }
 
 int
@@ -551,14 +601,15 @@ main(int argc, char **argv)
 	struct pollfd *pfds;
 	struct ctl *ctl;
 	struct key *key;
-	int xkb, xkb_maj, xkb_ev_base, xkb_auto_controls, xkb_auto_values;
+	int xkb, xkb_ev_base, xkb_auto_controls, xkb_auto_values;
 
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	add_key(ControlMask | Mod1Mask, XK_plus, inc_level);
-	add_key(ControlMask | Mod1Mask, XK_minus, dec_level);
-	add_key(ControlMask | Mod1Mask, XK_0, cycle_dev);
+	add_key(ControlMask | Mod1Mask, XK_plus, "output", "level", 1);
+	add_key(ControlMask | Mod1Mask, XK_minus, "output", "level", -1);
+	add_key(ControlMask | Mod1Mask, XK_0, "output", "mute", 0);
+	add_key(ControlMask | Mod1Mask, XK_Tab, "server", "device", 0);
 
 	while ((c = getopt(argc, argv, "ab:Df:m:sv")) != -1) {
 		switch (c) {
@@ -591,7 +642,7 @@ main(int argc, char **argv)
 	bad_usage:
 		fputs("usage: sndiokeys "
 		    "[-aDsv] "
-		    "[-b [[mod+...]key:func] "
+		    "[-b [mod+...]key:control[+|-|!] "
 		    "[-f device]\n",
 		    stderr);
 		exit(1);
@@ -670,8 +721,9 @@ main(int argc, char **argv)
 				continue;
 			for (key = key_list; key != NULL; key = key->next) {
 				if (xev.xkey.keycode == key->code &&
-				    key->map[xev.xkey.state & ShiftMask] == key->sym)
-					key->func();
+				    key->map[xev.xkey.state & ShiftMask] == key->sym &&
+				    key->modmask == (xev.xkey.state & MODMASK))
+					setval(key->name, key->func, key->dir);
 			}
 		}
 

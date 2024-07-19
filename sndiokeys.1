@@ -24,7 +24,7 @@ control sndiod with hot-keys and play keyboard bells
 .Sh SYNOPSIS
 .Nm sndiokeys
 .Op Fl a
-.Op Fl b Ar [mod+...]key:func
+.Op Fl b Ar [mod+...]key:control[+|-|!]
 .Op Fl D
 .Op Fl s
 .Op Fl v
@@ -43,11 +43,14 @@ The default key-bindings are as follows:
 .Pp
 .Bl -tag -width "Control+Mod1+minus" -offset indent -compact
 .It Control+Mod1+plus
-increase output level
+increase
+.Cm output\.level
 .It Control+Mod1+minus
-decrease output level
+decrease
+.Cm output\.level
 .It Control+Mod1+0
-cycle through audio devices.
+cycle through
+.Cm server\.device .
 .El
 .Pp
 .Nm
@@ -62,9 +65,9 @@ The options are as follows:
 Play audible beeps on the audio device in place of the
 .Xr X 7
 keyboard bells.
-.It Fl b Ar [modifier+...]key:function
-Perform
-.Cm function
+.It Fl b Ar [modifier+...]key:control[+|-|!]
+Increase, decrease or toggle
+.Cm control
 whenever
 .Cm key
 is pressed while
@@ -77,16 +80,9 @@ with the
 prefix removed.
 Supported modifiers are: Control, Mod1, and Mod4.
 On most setups, Mod1 and Mod4 correspond to the Alt and Windows keys.
-Function names are:
-.Pp
-.Bl -tag -width "cycle_dev" -offset indent -compact
-.It inc_level
-increase output level
-.It dec_level
-decrease output level
-.It cycle_dev
-cycle through audio devices
-.El
+Available controls may be listed with the
+.Xr sndioctl 1
+utility.
 .It Fl D
 Daemonize.
 .It Fl f Ar device
@@ -97,17 +93,18 @@ Don't emit audible beep when output level or audio device are changed.
 Increase log verbosity.
 .El
 .Sh EXAMPLES
-Increase or decrease output level when Up or Down keys are pressed
+Increase or decrease the output level when Up or Down keys are pressed
 while the Control and Mod1 keys are held down:
 .Bd -literal -offset indent
-$ sndiokeys -b Control+Mod1+Up:inc_level \\
-            -b Control+Mod1+Down:dec_level
+$ sndiokeys -b Control+Mod1+Up:output.level+ \\
+            -b Control+Mod1+Down:output.level-
 .Ed
 .Pp
 Make volume keys found on multimedia keyboards control the output level:
 .Bd -literal -offset indent
-$ sndiokeys -b XF86_AudioRaiseVolume:inc_level \\
-            -b XF86_AudioLowerVolume:dec_level
+$ sndiokeys -b XF86_AudioRaiseVolume:output.level+ \\
+            -b XF86_AudioLowerVolume:output.level- \\
+            -b XF86_AudioMuteVolume:output.mute!
 .Ed
 .Sh SEE ALSO
 .Xr sndioctl 1 ,
