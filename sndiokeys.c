@@ -29,27 +29,12 @@
 #include <X11/XKBlib.h>
 
 /*
- * Define mask of modifiers we care about.
- *
- * Example, the Control modifier: if add hot-key for Alt+F1, we want to
- * leave Control+F1 to other programs, so we require Control key to be down.
- * Similarly, we ignore Lock modifier (Caps lock) because we want our
- * hot-key to work no matter what the Caps Lock state is.
- *
- * Available modifers are:
- *	Shift
- *	Lock (Caps Lock key)
- *	Control
- *	Mod1 (Alt or Meta keys)
- * 	Mod2 (Num Lock key)
- * 	Mod3 (unused, sometimes Scroll Lock key)
- *	Mod4 (Windows key)
- *	Mod5 (Mode switch)
+ * The mask of modifiers supported for key-bindings.
  */
 #define MODMASK		(ControlMask | Mod1Mask | Mod4Mask)
 
 /*
- * number of level steps between 0 and 1
+ * Number of level steps between 0 and 1
  */
 #define NSTEP		20
 
@@ -103,6 +88,9 @@ int silent;
 int beep_pending;
 int audible_bell;
 
+/*
+ * Play a short beep. It's used as sonic feedback and/or keyboard bell
+ */
 static void
 play_beep(void)
 {
@@ -260,6 +248,54 @@ change_level(int dir)
 			sioctl_setval(hdl, i->desc.addr, vol);
 		}
 	}
+<<<<<<< HEAD
+=======
+
+	/* find the next entry */
+
+	next = nextent(cur);
+	if (next == NULL)
+		next = first;
+	if (next == cur) {
+		fprintf(stderr, "no next value\n");
+		return;
+	}
+
+	if (verbose)
+		fprintf(stderr, "%d -> %s\n", next->desc.addr, next->desc.node1.name);
+
+	cur->val = 0;
+	next->val = 1;
+	sioctl_setval(hdl, next->desc.addr, 1);
+	if (!silent)
+		beep_pending = 1;
+}
+
+static void
+setval_num(struct ctl *i, int dir)
+{
+	int val, incr;
+
+	if (i->desc.maxval > 1 && dir != 0) {
+		incr = ((int)i->desc.maxval + NSTEP - 1) / NSTEP;
+		val = i->val + dir * incr;
+		if (val < 0)
+			val = 0;
+		if (val > i->desc.maxval)
+			val = i->desc.maxval;
+		if (val == i->val)
+			return;
+	} else if (i->desc.maxval == 1 && dir == 0) {
+		val = i->val ^ 1;
+	} else
+		return;
+
+	if (verbose)
+		fprintf(stderr, "num: %d -> %d\n", i->desc.addr, val);
+
+	i->val = val;
+	sioctl_setval(hdl, i->desc.addr, val);
+>>>>>>> d133312 (Style tweaks)
 	if (!silent)
 		beep_pending = 1;
 }
@@ -335,8 +371,7 @@ cycle_dev(void)
 static int
 error_handler(Display *d, XErrorEvent *e)
 {
-	if (e->request_code == X_GrabKey &&
-	    e->error_code == BadAccess) {
+	if (e->request_code == X_GrabKey && e->error_code == BadAccess) {
 		fprintf(stderr, "Key \"%s\" already grabbed by another program\n",
 		    XKeysymToString(error_keysym));
 		exit(1);
@@ -365,8 +400,13 @@ grab_keys(void)
 			exit(1);
 		}
 
-		/* modifiers that we need to be zero (control, alt, windows) */
-
+		/*
+		 * Grab the key for all the modifier combinations
+		 * whose MODMASK bits match exactly. This way
+		 * X sends the events regardless of the state
+		 * of the other modifiers: Shift, Caps Lock,
+		 * Num Lock, Scroll Lock and Mode switch.
+		 */
 		error_keysym = key->sym;
 		nscr = ScreenCount(dpy);
 		for (i = 0; i <= 0xff; i++) {
@@ -431,7 +471,11 @@ add_key(unsigned int modmask, KeySym sym, void (*func)(void))
 	*p = key;
 }
 
-
+/*
+ * parse key binding with this format:
+ *
+ *	[mod '+' mod '+' ...] key ':' name '.' func {'+' | '-' | '!'}
+ */
 static void
 parsekey(char *str)
 {
