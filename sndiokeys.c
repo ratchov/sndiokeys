@@ -684,7 +684,7 @@ main(int argc, char **argv)
 			beep_pending = 0;
 		}
 
-		nfds = (hdl != NULL) ? sioctl_pollfd(hdl, pfds, 0) : 0;
+		nfds = sioctl_pollfd(hdl, pfds, 0);
 		pfds[nfds].fd = ConnectionNumber(dpy);
 		pfds[nfds].events = POLLIN;
 		while (poll(pfds, nfds + 1, -1) < 0 && errno == EINTR)
