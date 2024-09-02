@@ -1,8 +1,7 @@
 sndiokeys - control sndiod with hot-keys and play keyboard bells
 
-sndiokeys registers hot-keys in X(7) to control sndiod(8). It can be
-used to replace the X(7) keyboard bells by audible beeps on the
-audio device.
+sndiokeys registers hot-keys in X(7) to control sndiod(8). It can also
+replace the X(7) keyboard bells by audible beeps on the audio device.
 
 The default key-bindings are as follows:
 
