@@ -104,7 +104,7 @@ Make volume keys found on multimedia keyboards control the output level:
 .Bd -literal -offset indent
 $ sndiokeys -b XF86_AudioRaiseVolume:output.level+ \\
             -b XF86_AudioLowerVolume:output.level- \\
-            -b XF86_AudioMuteVolume:output.mute!
+            -b XF86_AudioMute:output.mute!
 .Ed
 .Sh SEE ALSO
 .Xr sndioctl 1 ,
