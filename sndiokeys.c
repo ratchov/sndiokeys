@@ -607,10 +607,6 @@ main(int argc, char **argv)
 	dev_name = SIO_DEVANY;
 	verbose = 0;
 	background = 0;
-	add_key(ControlMask | Mod1Mask, XK_plus, "output", "level", 1);
-	add_key(ControlMask | Mod1Mask, XK_minus, "output", "level", -1);
-	add_key(ControlMask | Mod1Mask, XK_0, "output", "mute", 0);
-	add_key(ControlMask | Mod1Mask, XK_Tab, "server", "device", 0);
 
 	while ((c = getopt(argc, argv, "ab:Df:m:sv")) != -1) {
 		switch (c) {
@@ -647,6 +643,13 @@ main(int argc, char **argv)
 		    "[-f device]\n",
 		    stderr);
 		exit(1);
+	}
+
+	if (key_list == NULL) {
+		add_key(ControlMask | Mod1Mask, XK_plus, "output", "level", 1);
+		add_key(ControlMask | Mod1Mask, XK_minus, "output", "level", -1);
+		add_key(ControlMask | Mod1Mask, XK_0, "output", "mute", 0);
+		add_key(ControlMask | Mod1Mask, XK_Tab, "server", "device", 0);
 	}
 
 	error_handler_xlib = XSetErrorHandler(error_handler);
