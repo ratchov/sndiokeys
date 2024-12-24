@@ -139,7 +139,7 @@ err_close:
 }
 
 /*
- * compare two sioctl_desc structures, used to sort infolist
+ * compare two sioctl_desc structures, used to sort ctl_list
  */
 static int
 cmpdesc(struct sioctl_desc *d1, struct sioctl_desc *d2)
