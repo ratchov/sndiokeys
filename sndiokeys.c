@@ -76,8 +76,8 @@ Display	*dpy;
 int (*error_handler_xlib)(Display *, XErrorEvent *);
 KeySym error_keysym;
 
-struct sioctl_hdl *hdl;
 char *dev_name;
+struct sioctl_hdl *ctl_hdl;
 int ctl_maxfds;
 int maxfds;
 
@@ -97,12 +97,12 @@ play_beep(void)
 #define BELL_PERIOD	(BELL_RATE / 880)
 #define BELL_AMP	(INT16_MAX / 32)
 	int16_t data[BELL_LEN];
-	struct sio_hdl *hdl;
+	struct sio_hdl *beep_hdl;
 	struct sio_par par;
 	int i;
 
-	hdl = sio_open(dev_name, SIO_PLAY, 0);
-	if (hdl == NULL) {
+	beep_hdl = sio_open(dev_name, SIO_PLAY, 0);
+	if (beep_hdl == NULL) {
 		if (verbose)
 			fprintf(stderr, "bell: failed to open audio device\n");
 		return;
@@ -113,7 +113,7 @@ play_beep(void)
 	par.rate = BELL_RATE;
 	par.pchan = 1;
 
-	if (!sio_setpar(hdl, &par) || !sio_getpar(hdl, &par)) {
+	if (!sio_setpar(beep_hdl, &par) || !sio_getpar(beep_hdl, &par)) {
 		if (verbose)
 			fprintf(stderr, "bell: failed to set parameters\n");
 		goto err_close;
@@ -126,7 +126,7 @@ play_beep(void)
 		goto err_close;
 	}
 
-	if (!sio_start(hdl)) {
+	if (!sio_start(beep_hdl)) {
 		if (verbose)
 			fprintf(stderr, "bell: failed to start playback\n");
 		goto err_close;
@@ -137,14 +137,14 @@ play_beep(void)
 		    BELL_AMP : -BELL_AMP;
 	}
 
-	if (sio_write(hdl, data, sizeof(data)) != sizeof(data)) {
+	if (sio_write(beep_hdl, data, sizeof(data)) != sizeof(data)) {
 		if (verbose)
 			fprintf(stderr, "bell: short write\n");
 		goto err_close;
 	}
 
 err_close:
-	sio_close(hdl);
+	sio_close(beep_hdl);
 }
 
 /*
@@ -310,19 +310,19 @@ onval(void *unused, unsigned int addr, unsigned int val)
 static int
 ctl_open(void)
 {
-	hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
-	if (hdl == NULL) {
+	ctl_hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
+	if (ctl_hdl == NULL) {
 		fprintf(stderr, "%s: couldn't open audio device\n", dev_name);
 		return 0;
 	}
-	sioctl_ondesc(hdl, ondesc, NULL);
-	sioctl_onval(hdl, onval, NULL);
+	sioctl_ondesc(ctl_hdl, ondesc, NULL);
+	sioctl_onval(ctl_hdl, onval, NULL);
 
-	ctl_maxfds = sioctl_nfds(hdl);
+	ctl_maxfds = sioctl_nfds(ctl_hdl);
 	if (ctl_maxfds + maxfds >= MAXFDS) {
 		fprintf(stderr, "%s: too many fds\n", dev_name);
-		sioctl_close(hdl);
-		hdl = NULL;
+		sioctl_close(ctl_hdl);
+		ctl_hdl = NULL;
 		return 0;
 	}
 	maxfds += ctl_maxfds;
@@ -341,8 +341,8 @@ ctl_close(void)
 	}
 	maxfds -= ctl_maxfds;
 	fprintf(stderr, "maxfds -> %d\n", maxfds);
-	sioctl_close(hdl);
-	hdl = NULL;
+	sioctl_close(ctl_hdl);
+	ctl_hdl = NULL;
 }
 
 static void
@@ -379,7 +379,7 @@ setval_sel(struct ctl *first, int dir)
 
 	cur->val = 0;
 	next->val = 1;
-	sioctl_setval(hdl, next->desc.addr, 1);
+	sioctl_setval(ctl_hdl, next->desc.addr, 1);
 	if (!silent)
 		beep_pending = 1;
 }
@@ -407,7 +407,7 @@ setval_num(struct ctl *i, int dir)
 		fprintf(stderr, "num: %d -> %d\n", i->desc.addr, val);
 
 	i->val = val;
-	sioctl_setval(hdl, i->desc.addr, val);
+	sioctl_setval(ctl_hdl, i->desc.addr, val);
 	if (!silent)
 		beep_pending = 1;
 }
@@ -420,7 +420,7 @@ setval(char *name, char *func, int dir)
 {
 	struct ctl *i;
 
-	if (!hdl) {
+	if (!ctl_hdl) {
 		if (!ctl_open())
 			return;
 	}
@@ -780,8 +780,8 @@ main(int argc, char **argv)
 		}
 
 		nfds = 0;
-		if (hdl) {
-			ctl_nfds = sioctl_pollfd(hdl, pfds, 0);
+		if (ctl_hdl) {
+			ctl_nfds = sioctl_pollfd(ctl_hdl, pfds, 0);
 			nfds += ctl_nfds;
 		}
 		pfds[nfds].fd = ConnectionNumber(dpy);
@@ -792,8 +792,8 @@ main(int argc, char **argv)
 			; /* nothing */
 
 		nfds = 0;
-		if (hdl) {
-			if (sioctl_revents(hdl, pfds + nfds) & POLLHUP) {
+		if (ctl_hdl) {
+			if (sioctl_revents(ctl_hdl, pfds + nfds) & POLLHUP) {
 				fprintf(stderr, "sndio: hup\n");
 				ctl_close();
 			}
@@ -811,7 +811,7 @@ main(int argc, char **argv)
 	XCloseDisplay(dpy);
 	maxfds--;
 
-	if (hdl)
+	if (ctl_hdl)
 		ctl_close();
 
 	while ((key = key_list) != NULL) {
