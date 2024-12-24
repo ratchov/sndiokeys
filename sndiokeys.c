@@ -39,6 +39,12 @@
  */
 #define NSTEP		20
 
+/*
+ * Max fds we poll
+ */
+#define MAXFDS		64
+
+
 struct modname {
 	unsigned int modmask;
 	char *name;
@@ -72,6 +78,9 @@ KeySym error_keysym;
 
 struct sioctl_hdl *hdl;
 char *dev_name;
+int ctl_maxfds;
+int maxfds;
+
 int verbose;
 int silent;
 int beep_pending;
@@ -298,6 +307,44 @@ onval(void *unused, unsigned int addr, unsigned int val)
 
 }
 
+static int
+ctl_open(void)
+{
+	hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
+	if (hdl == NULL) {
+		fprintf(stderr, "%s: couldn't open audio device\n", dev_name);
+		return 0;
+	}
+	sioctl_ondesc(hdl, ondesc, NULL);
+	sioctl_onval(hdl, onval, NULL);
+
+	ctl_maxfds = sioctl_nfds(hdl);
+	if (ctl_maxfds + maxfds >= MAXFDS) {
+		fprintf(stderr, "%s: too many fds\n", dev_name);
+		sioctl_close(hdl);
+		hdl = NULL;
+		return 0;
+	}
+	maxfds += ctl_maxfds;
+	fprintf(stderr, "maxfds -> %d\n", maxfds);
+	return 1;
+}
+
+static void
+ctl_close(void)
+{
+	struct ctl *c;
+
+	while ((c = ctl_list) != NULL) {
+		ctl_list = ctl_list->next;
+		free(c);
+	}
+	maxfds -= ctl_maxfds;
+	fprintf(stderr, "maxfds -> %d\n", maxfds);
+	sioctl_close(hdl);
+	hdl = NULL;
+}
+
 static void
 setval_sel(struct ctl *first, int dir)
 {
@@ -372,6 +419,11 @@ static void
 setval(char *name, char *func, int dir)
 {
 	struct ctl *i;
+
+	if (!hdl) {
+		if (!ctl_open())
+			return;
+	}
 
 	i = ctl_list;
 	while (1) {
@@ -599,10 +651,10 @@ main(int argc, char **argv)
 	XEvent xev;
 	int c, nfds;
 	int background;
-	struct pollfd *pfds;
-	struct ctl *ctl;
+	struct pollfd pfds[MAXFDS];
 	struct key *key;
 	int xkb, xkb_ev_base, xkb_auto_controls, xkb_auto_values;
+	size_t ctl_nfds;
 
 	dev_name = SIO_DEVANY;
 	verbose = 0;
@@ -659,6 +711,7 @@ main(int argc, char **argv)
 		fprintf(stderr, "Couldn't open display\n");
 		exit(1);
 	}
+	maxfds++;
 
 	xkb = 0;
 	if (audible_bell) {
@@ -674,20 +727,6 @@ main(int argc, char **argv)
 			xkb = 1;
 		} else
 			fprintf(stderr, "Audible bell not suppored by X server\n");
-	}
-
-	hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
-	if (hdl == NULL) {
-		fprintf(stderr, "%s: couldn't open audio device\n", dev_name);
-		return 0;
-	}
-	sioctl_ondesc(hdl, ondesc, NULL);
-	sioctl_onval(hdl, onval, NULL);
-
-	pfds = calloc(sioctl_nfds(hdl) + 1, sizeof(struct pollfd));
-	if (pfds == NULL) {
-		perror("calloc\n");
-		exit(1);
 	}
 
 	/* mask non-key events for each screan */
@@ -740,30 +779,40 @@ main(int argc, char **argv)
 			beep_pending = 0;
 		}
 
-		nfds = sioctl_pollfd(hdl, pfds, 0);
+		nfds = 0;
+		if (hdl) {
+			ctl_nfds = sioctl_pollfd(hdl, pfds, 0);
+			nfds += ctl_nfds;
+		}
 		pfds[nfds].fd = ConnectionNumber(dpy);
 		pfds[nfds].events = POLLIN;
-		while (poll(pfds, nfds + 1, -1) < 0 && errno == EINTR)
+		nfds++;
+
+		while (poll(pfds, nfds, -1) < 0 && errno == EINTR)
 			; /* nothing */
-		if (sioctl_revents(hdl, pfds) & POLLHUP) {
-			fprintf(stderr, "sndio: hup\n");
-			break;
+
+		nfds = 0;
+		if (hdl) {
+			if (sioctl_revents(hdl, pfds + nfds) & POLLHUP) {
+				fprintf(stderr, "sndio: hup\n");
+				ctl_close();
+			}
+			nfds += ctl_nfds;
 		}
+
 		if (pfds[nfds].revents & POLLHUP) {
 			fprintf(stderr, "x11: hup\n");
 			break;
 		}
+		nfds++;
 	}
 
 	ungrab_keys();
 	XCloseDisplay(dpy);
+	maxfds--;
 
-	sioctl_close(hdl);
-
-	while ((ctl = ctl_list) != NULL) {
-		ctl_list = ctl_list->next;
-		free(ctl);
-	}
+	if (hdl)
+		ctl_close();
 
 	while ((key = key_list) != NULL) {
 		key_list = key_list->next;
