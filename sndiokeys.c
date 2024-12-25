@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,13 @@
  */
 #define MAXFDS		64
 
+/*
+ * Keyboard bell parameters
+ */
+#define BELL_RATE	48000
+#define BELL_LEN	(BELL_RATE / 20)
+#define BELL_PERIOD	(BELL_RATE / 880)
+#define BELL_AMP	(INT16_MAX / 32)
 
 struct modname {
 	unsigned int modmask;
@@ -77,6 +85,8 @@ int (*error_handler_xlib)(Display *, XErrorEvent *);
 KeySym error_keysym;
 
 char *dev_name;
+struct sio_hdl *beep_hdl;
+int beep_maxfds;
 struct sioctl_hdl *ctl_hdl;
 int ctl_maxfds;
 int maxfds;
@@ -86,26 +96,24 @@ int silent;
 int beep_pending;
 int audible_bell;
 
-/*
- * Play a short beep. It's used as sonic feedback and/or keyboard bell
- */
 static void
-play_beep(void)
+beep_close(void)
 {
-#define BELL_RATE	48000
-#define BELL_LEN	(BELL_RATE / 20)
-#define BELL_PERIOD	(BELL_RATE / 880)
-#define BELL_AMP	(INT16_MAX / 32)
-	int16_t data[BELL_LEN];
-	struct sio_hdl *beep_hdl;
+	maxfds -= beep_maxfds;
+	sio_close(beep_hdl);
+	beep_hdl = NULL;
+}
+
+static int
+beep_open(void)
+{
 	struct sio_par par;
-	int i;
 
 	beep_hdl = sio_open(dev_name, SIO_PLAY, 0);
 	if (beep_hdl == NULL) {
 		if (verbose)
 			fprintf(stderr, "bell: failed to open audio device\n");
-		return;
+		return 0;
 	}
 
 	sio_initpar(&par);
@@ -125,26 +133,47 @@ play_beep(void)
 			fprintf(stderr, "bell: bad parameters\n");
 		goto err_close;
 	}
+	beep_maxfds = sio_nfds(beep_hdl);
+	if (beep_maxfds + maxfds >= MAXFDS) {
+		fprintf(stderr, "%s: too many fds\n", dev_name);
+		goto err_close;
+	}
+	maxfds += beep_maxfds;
+	return 1;
+err_close:
+	sio_close(beep_hdl);
+	beep_hdl = NULL;
+	return 0;
+}
 
+/*
+ * Play a short beep. It's used as sonic feedback and/or keyboard bell
+ */
+static void
+beep_play(void)
+{
+	int16_t data[BELL_LEN];
+	int i;
+
+	if (beep_hdl == NULL) {
+		if (!beep_open())
+			return;
+	}
 	if (!sio_start(beep_hdl)) {
 		if (verbose)
 			fprintf(stderr, "bell: failed to start playback\n");
-		goto err_close;
+		return;
 	}
-
 	for (i = 0; i < BELL_LEN; i++) {
 		data[i] = (i % BELL_PERIOD) < (BELL_PERIOD / 2) ?
 		    BELL_AMP : -BELL_AMP;
 	}
-
 	if (sio_write(beep_hdl, data, sizeof(data)) != sizeof(data)) {
 		if (verbose)
 			fprintf(stderr, "bell: short write\n");
-		goto err_close;
+		return;
 	}
-
-err_close:
-	sio_close(beep_hdl);
+	sio_stop(beep_hdl);
 }
 
 /*
@@ -649,12 +678,11 @@ main(int argc, char **argv)
 {
 	int scr;
 	XEvent xev;
-	int c, nfds;
+	int c, nfds, ctl_nfds, beep_nfds;
 	int background;
 	struct pollfd pfds[MAXFDS];
 	struct key *key;
 	int xkb, xkb_ev_base, xkb_auto_controls, xkb_auto_values;
-	size_t ctl_nfds;
 
 	dev_name = SIO_DEVANY;
 	verbose = 0;
@@ -775,14 +803,18 @@ main(int argc, char **argv)
 		 * play it only once
 		 */
 		if (beep_pending) {
-			play_beep();
+			beep_play();
 			beep_pending = 0;
 		}
 
 		nfds = 0;
 		if (ctl_hdl) {
-			ctl_nfds = sioctl_pollfd(ctl_hdl, pfds, 0);
+			ctl_nfds = sioctl_pollfd(ctl_hdl, pfds + nfds, 0);
 			nfds += ctl_nfds;
+		}
+		if (beep_hdl) {
+			beep_nfds = sio_pollfd(beep_hdl, pfds + nfds, 0);
+			nfds += beep_nfds;
 		}
 		pfds[nfds].fd = ConnectionNumber(dpy);
 		pfds[nfds].events = POLLIN;
@@ -794,12 +826,18 @@ main(int argc, char **argv)
 		nfds = 0;
 		if (ctl_hdl) {
 			if (sioctl_revents(ctl_hdl, pfds + nfds) & POLLHUP) {
-				fprintf(stderr, "sndio: hup\n");
+				fprintf(stderr, "sndio: ctl hup\n");
 				ctl_close();
 			}
 			nfds += ctl_nfds;
 		}
-
+		if (beep_hdl) {
+			if (sio_revents(beep_hdl, pfds + nfds) & POLLHUP) {
+				fprintf(stderr, "sndio: beep hup\n");
+				beep_close();
+			}
+			nfds += beep_nfds;
+		}
 		if (pfds[nfds].revents & POLLHUP) {
 			fprintf(stderr, "x11: hup\n");
 			break;
@@ -813,6 +851,9 @@ main(int argc, char **argv)
 
 	if (ctl_hdl)
 		ctl_close();
+
+	if (beep_hdl)
+		beep_close();
 
 	while ((key = key_list) != NULL) {
 		key_list = key_list->next;
