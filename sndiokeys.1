@@ -57,10 +57,10 @@ cycle through
 .El
 .Pp
 .Nm
-is meant to be started as background process by
+is meant to be started as a background process by
 .Xr startx 1
 or the display manager session startup scripts.
-It exits when X session terminates.
+It exits when the X session terminates.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds
@@ -91,7 +91,7 @@ Daemonize.
 .It Fl f Ar device
 Audio device to control.
 .It Fl s
-Don't emit audible beep when output level or audio device are changed.
+Don't emit audible beep when a controls changes.
 .It Fl v
 Increase log verbosity.
 .El
@@ -116,7 +116,7 @@ $ sndiokeys -b XF86_AudioRaiseVolume:output.level+ \\
 .Xr X 7 ,
 .Xr sndiod 8
 .Sh BUGS
-Volume keys of multimedia keyboards may already control output level
+The volume keys of multimedia keyboards may already control the output level
 using another mechanism.
 If so, using the same keys in
 .Nm
