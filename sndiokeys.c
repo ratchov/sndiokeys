@@ -53,6 +53,12 @@
 #define BELL_PERIOD	(BELL_RATE / 880)
 #define BELL_AMP	(INT16_MAX / 32)
 
+#define logx(n, fmt, ...)						\
+	do {								\
+		if (verbose >= n)					\
+			fprintf(stderr, fmt "\n", ## __VA_ARGS__);	\
+	} while (0)
+
 struct modname {
 	unsigned int modmask;
 	char *name;
@@ -111,8 +117,7 @@ beep_open(void)
 
 	beep_hdl = sio_open(dev_name, SIO_PLAY, 0);
 	if (beep_hdl == NULL) {
-		if (verbose)
-			fprintf(stderr, "bell: failed to open audio device\n");
+		logx(1, "bell: failed to open audio device");
 		return 0;
 	}
 
@@ -122,20 +127,18 @@ beep_open(void)
 	par.pchan = 1;
 
 	if (!sio_setpar(beep_hdl, &par) || !sio_getpar(beep_hdl, &par)) {
-		if (verbose)
-			fprintf(stderr, "bell: failed to set parameters\n");
+		logx(1, "bell: failed to set parameters");
 		goto err_close;
 	}
 
 	if (par.bits != 16 || par.bps != 2 || par.le != SIO_LE_NATIVE ||
 	    par.pchan != 1 || par.rate != BELL_RATE) {
-		if (verbose)
-			fprintf(stderr, "bell: bad parameters\n");
+		logx(1, "bell: bad parameters");
 		goto err_close;
 	}
 	beep_maxfds = sio_nfds(beep_hdl);
 	if (beep_maxfds + maxfds >= MAXFDS) {
-		fprintf(stderr, "%s: too many fds\n", dev_name);
+		logx(1, "%s: too many fds", dev_name);
 		goto err_close;
 	}
 	maxfds += beep_maxfds;
@@ -160,8 +163,7 @@ beep_play(void)
 			return;
 	}
 	if (!sio_start(beep_hdl)) {
-		if (verbose)
-			fprintf(stderr, "bell: failed to start playback\n");
+		logx(1, "bell: failed to start playback");
 		return;
 	}
 	for (i = 0; i < BELL_LEN; i++) {
@@ -169,8 +171,7 @@ beep_play(void)
 		    BELL_AMP : -BELL_AMP;
 	}
 	if (sio_write(beep_hdl, data, sizeof(data)) != sizeof(data)) {
-		if (verbose)
-			fprintf(stderr, "bell: short write\n");
+		logx(1, "bell: short write");
 		return;
 	}
 	sio_stop(beep_hdl);
@@ -293,7 +294,7 @@ ondesc(void *unused, struct sioctl_desc *desc, int val)
 
 	i = malloc(sizeof(struct ctl));
 	if (i == NULL) {
-		perror("malloc");
+		logx(1, "failed to allocate desc: %s", strerror(errno));
 		exit(1);
 	}
 	i->desc = *desc;
@@ -310,8 +311,7 @@ onval(void *unused, unsigned int addr, unsigned int val)
 {
 	struct ctl *i, *j;
 
-	if (verbose)
-		fprintf(stderr, "onval: %d -> %d\n", addr, val);
+	logx(1, "onval: %d -> %d", addr, val);
 
 	i = ctl_list;
 	for (;;) {
@@ -341,7 +341,7 @@ ctl_open(void)
 {
 	ctl_hdl = sioctl_open(dev_name, SIOCTL_READ | SIOCTL_WRITE, 0);
 	if (ctl_hdl == NULL) {
-		fprintf(stderr, "%s: couldn't open audio device\n", dev_name);
+		logx(1, "%s: couldn't open audio device", dev_name);
 		return 0;
 	}
 	sioctl_ondesc(ctl_hdl, ondesc, NULL);
@@ -349,13 +349,12 @@ ctl_open(void)
 
 	ctl_maxfds = sioctl_nfds(ctl_hdl);
 	if (ctl_maxfds + maxfds >= MAXFDS) {
-		fprintf(stderr, "%s: too many fds\n", dev_name);
+		logx(1, "%s: too many fds", dev_name);
 		sioctl_close(ctl_hdl);
 		ctl_hdl = NULL;
 		return 0;
 	}
 	maxfds += ctl_maxfds;
-	fprintf(stderr, "maxfds -> %d\n", maxfds);
 	return 1;
 }
 
@@ -369,7 +368,6 @@ ctl_close(void)
 		free(c);
 	}
 	maxfds -= ctl_maxfds;
-	fprintf(stderr, "maxfds -> %d\n", maxfds);
 	sioctl_close(ctl_hdl);
 	ctl_hdl = NULL;
 }
@@ -388,7 +386,7 @@ setval_sel(struct ctl *first, int dir)
 	while (cur->val == 0) {
 		cur = nextent(cur);
 		if (cur == NULL) {
-			fprintf(stderr, "no current value\n");
+			logx(1, "%d: no current value", first->desc.addr);
 			return;
 		}
 	}
@@ -399,12 +397,11 @@ setval_sel(struct ctl *first, int dir)
 	if (next == NULL)
 		next = first;
 	if (next == cur) {
-		fprintf(stderr, "no next value\n");
+		logx(1, "%d: no next value", first->desc.addr);
 		return;
 	}
 
-	if (verbose)
-		fprintf(stderr, "%d -> %s\n", next->desc.addr, next->desc.node1.name);
+	logx(2, "%d -> %s", next->desc.addr, next->desc.node1.name);
 
 	cur->val = 0;
 	next->val = 1;
@@ -432,8 +429,7 @@ setval_num(struct ctl *i, int dir)
 	} else
 		return;
 
-	if (verbose)
-		fprintf(stderr, "num: %d -> %d\n", i->desc.addr, val);
+	logx(2, "%d -> %d", i->desc.addr, val);
 
 	i->val = val;
 	sioctl_setval(ctl_hdl, i->desc.addr, val);
@@ -478,7 +474,7 @@ static int
 error_handler(Display *d, XErrorEvent *e)
 {
 	if (e->request_code == X_GrabKey && e->error_code == BadAccess) {
-		fprintf(stderr, "Key \"%s\" already grabbed by another program\n",
+		logx(1, "Key \"%s\" already grabbed by another program",
 		    XKeysymToString(error_keysym));
 		exit(1);
 	}
@@ -501,7 +497,7 @@ grab_keys(void)
 		key->code = XKeysymToKeycode(dpy, key->sym);
 		key->map = XGetKeyboardMapping(dpy, key->code, 1, &nret);
 		if (nret <= ShiftMask) {
-			fprintf(stderr, "%s: couldn't get keymap for key\n",
+			logx(1, "%s: couldn't get keymap for key",
 			    XKeysymToString(key->sym));
 			exit(1);
 		}
@@ -567,7 +563,7 @@ add_key(unsigned int modmask, KeySym sym, char *name, char *func, int dir)
 
 	key = malloc(sizeof(struct key));
 	if (key == NULL) {
-		perror("malloc: key");
+		logx(1, "failed to allocate key: %s", strerror(errno));
 		exit(1);
 	}
 	key->sym = sym;
@@ -596,7 +592,7 @@ parsekey(char *str)
 
 	name = strchr(str, ':');
 	if (name == NULL) {
-		fprintf(stderr, "%s: expected ':'\n", str);
+		logx(1, "%s: expected ':'", str);
 		exit(1);
 	}
 	*name++ = 0;
@@ -613,7 +609,7 @@ parsekey(char *str)
 		mod = modname_tab;
 		while (1) {
 			if (mod->modmask == 0) {
-				fprintf(stderr, "%s: bad modifier\n", p);
+				logx(1, "%s: bad modifier", p);
 				exit(1);
 			}
 			if (strcmp(p, mod->name) == 0) {
@@ -628,7 +624,7 @@ parsekey(char *str)
 
 	keysym = XStringToKeysym(p);
 	if (keysym == NoSymbol) {
-		fprintf(stderr, "%s: unknowm key\n", p);
+		logx(1, "%s: unknowm key", p);
 		exit(1);
 	}
 
@@ -648,7 +644,7 @@ parsekey(char *str)
 
 	func = strchr(name, '.');
 	if (func == NULL) {
-		fprintf(stderr, "%s: expected '.'\n", name);
+		fprintf(stderr, "%s: expected '.'", name);
 		exit(1);
 	}
 	*func++ = 0;
@@ -660,13 +656,13 @@ parsekey(char *str)
 	} else if ((end = strchr(func, '!')) != NULL) {
 		dir = 0;
 	} else {
-		fprintf(stderr, "%s: expected '+', '-' or '!'\n", end);
+		fprintf(stderr, "%s: expected '+', '-' or '!'", end);
 		exit(1);
 	}
 	*end++ = 0;
 
 	if (*end != 0) {
-		fprintf(stderr, "%s: junk at end of the argument\n", end);
+		logx(1, "%s: junk at end of the argument", end);
 		exit(1);
 	}
 
@@ -685,7 +681,7 @@ main(int argc, char **argv)
 	int xkb, xkb_ev_base, xkb_auto_controls, xkb_auto_values;
 
 	dev_name = SIO_DEVANY;
-	verbose = 0;
+	verbose = 1;
 	background = 0;
 
 	while ((c = getopt(argc, argv, "ab:Df:m:sv")) != -1) {
@@ -736,7 +732,7 @@ main(int argc, char **argv)
 
 	dpy = XOpenDisplay(NULL);
 	if (dpy == 0) {
-		fprintf(stderr, "Couldn't open display\n");
+		logx(1, "Couldn't open display");
 		exit(1);
 	}
 	maxfds++;
@@ -754,7 +750,7 @@ main(int argc, char **argv)
 			    XkbAudibleBellMask, 0);
 			xkb = 1;
 		} else
-			fprintf(stderr, "Audible bell not suppored by X server\n");
+			logx(1, "Audible bell not suppored by the X server");
 	}
 
 	/* mask non-key events for each screan */
@@ -766,7 +762,7 @@ main(int argc, char **argv)
 	if (background) {
 		verbose = 0;
 		if (daemon(0, 0) < 0) {
-			perror("daemon");
+			logx(1, "failed to daemonize: %s", strerror(errno));
 			exit(1);
 		}
 	}
@@ -777,8 +773,7 @@ main(int argc, char **argv)
 			if (xev.type == MappingNotify) {
 				if (xev.xmapping.request != MappingKeyboard)
 					continue;
-				if (verbose)
-					fprintf(stderr, "keyboard remapped\n");
+				logx(1, "keyboard remapped");
 				ungrab_keys();
 				grab_keys();
 				continue;
@@ -826,20 +821,20 @@ main(int argc, char **argv)
 		nfds = 0;
 		if (ctl_hdl) {
 			if (sioctl_revents(ctl_hdl, pfds + nfds) & POLLHUP) {
-				fprintf(stderr, "sndio: ctl hup\n");
+				logx(1, "sndio: ctl hup");
 				ctl_close();
 			}
 			nfds += ctl_nfds;
 		}
 		if (beep_hdl) {
 			if (sio_revents(beep_hdl, pfds + nfds) & POLLHUP) {
-				fprintf(stderr, "sndio: beep hup\n");
+				logx(1, "sndio: beep hup");
 				beep_close();
 			}
 			nfds += beep_nfds;
 		}
 		if (pfds[nfds].revents & POLLHUP) {
-			fprintf(stderr, "x11: hup\n");
+			logx(1, "x11: hup");
 			break;
 		}
 		nfds++;
