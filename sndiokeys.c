@@ -724,8 +724,8 @@ main(int argc, char **argv)
 	if (key_list == NULL) {
 		add_key(ControlMask | Mod1Mask, XK_plus, "output", "level", 1);
 		add_key(ControlMask | Mod1Mask, XK_minus, "output", "level", -1);
-		add_key(ControlMask | Mod1Mask, XK_0, "output", "mute", 0);
-		add_key(ControlMask | Mod1Mask, XK_Tab, "server", "device", 0);
+		add_key(ControlMask | Mod1Mask, XK_m, "output", "mute", 0);
+		add_key(ControlMask | Mod1Mask, XK_0, "server", "device", 0);
 	}
 
 	error_handler_xlib = XSetErrorHandler(error_handler);
