@@ -38,14 +38,14 @@ keyboard bell by a beep on the audio device.
 .Pp
 The default key-bindings are as follows:
 .Pp
-.Bl -tag -width "Control+Mod1+minus" -offset indent -compact
-.It Control+Mod1+plus
+.Bl -tag -width "XF86_AudioLowerVolume" -offset indent -compact
+.It XF86_AudioRaiseVolume
 increase
 .Cm output\.level
-.It Control+Mod1+minus
+.It XF86_AudioLowerVolume
 decrease
 .Cm output\.level
-.It Control+Mod1+M
+.It XF86_AudioMute
 toggle
 .Cm output\.mute
 .It Control+Mod1+0
@@ -98,13 +98,6 @@ while the Control and Mod1 keys are held down:
 .Bd -literal -offset indent
 $ sndiokeys -b Control+Mod1+Up:output.level+ \\
             -b Control+Mod1+Down:output.level-
-.Ed
-.Pp
-Make volume keys found on multimedia keyboards control the output level:
-.Bd -literal -offset indent
-$ sndiokeys -b XF86_AudioRaiseVolume:output.level+ \\
-            -b XF86_AudioLowerVolume:output.level- \\
-            -b XF86_AudioMute:output.mute!
 .Ed
 .Sh SEE ALSO
 .Xr sndioctl 1 ,

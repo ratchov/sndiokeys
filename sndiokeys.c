@@ -684,6 +684,11 @@ main(int argc, char **argv)
 	verbose = 1;
 	background = 0;
 
+	add_key(0, XF86XK_AudioRaiseVolume, "output", "level", 1);
+	add_key(0, XF86XK_AudioLowerVolume, "output", "level", -1);
+	add_key(0, XF86XK_AudioMute, "output", "mute", 0);
+	add_key(ControlMask | Mod1Mask, XK_0, "server", "device", 0);
+
 	while ((c = getopt(argc, argv, "ab:Df:m:sv")) != -1) {
 		switch (c) {
 		case 'a':
@@ -719,13 +724,6 @@ main(int argc, char **argv)
 		    "[-f device]\n",
 		    stderr);
 		exit(1);
-	}
-
-	if (key_list == NULL) {
-		add_key(ControlMask | Mod1Mask, XK_plus, "output", "level", 1);
-		add_key(ControlMask | Mod1Mask, XK_minus, "output", "level", -1);
-		add_key(ControlMask | Mod1Mask, XK_m, "output", "mute", 0);
-		add_key(ControlMask | Mod1Mask, XK_0, "server", "device", 0);
 	}
 
 	error_handler_xlib = XSetErrorHandler(error_handler);
