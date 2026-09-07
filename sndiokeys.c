@@ -23,6 +23,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sndio.h>
+#ifdef __OpenBSD__
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <sys/param.h>
+#endif
 #include <X11/Xlib.h>
 #include <X11/Xproto.h>
 #include <X11/Xutil.h>
@@ -576,6 +581,35 @@ add_key(unsigned int modmask, KeySym sym, char *name, char *func, int dir)
 	*p = key;
 }
 
+int
+obsd_ignore_xkey(XKeyEvent *xkey)
+{
+#ifdef __OpenBSD__
+	int kern_ctl = 0;
+	static const int name[] = {CTL_KERN, KERN_AUDIO, KERN_AUDIO_KBDCONTROL};
+	size_t len = sizeof(kern_ctl);
+
+	if (xkey->keycode == XKeysymToKeycode(dpy, XF86XK_AudioLowerVolume) ||
+	    xkey->keycode == XKeysymToKeycode(dpy, XF86XK_AudioRaiseVolume) ||
+	    xkey->keycode == XKeysymToKeycode(dpy, XF86XK_AudioMute) ||
+	    xkey->keycode == XKeysymToKeycode(dpy, XF86XK_AudioMicMute)) {
+
+		if (sysctl(name, nitems(name), &kern_ctl, &len, NULL, 0) == -1) {
+			logx(1, "sysctl: %s", strerror(errno));
+			return 0;
+		}
+
+		if (kern_ctl) {
+			logx(2, "key ignored by kern.audio.kbdcontrol");
+			return 1;
+		}
+	}
+	return 0;
+#else
+	return 0;
+#endif
+}
+
 /*
  * parse key binding with this format:
  *
@@ -782,6 +816,8 @@ main(int argc, char **argv)
 				continue;
 			}
 			if (xev.type != KeyPress)
+				continue;
+			if (obsd_ignore_xkey(&xev.xkey))
 				continue;
 			for (key = key_list; key != NULL; key = key->next) {
 				if (xev.xkey.keycode == key->code &&

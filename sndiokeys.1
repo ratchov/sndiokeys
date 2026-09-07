@@ -106,8 +106,20 @@ $ sndiokeys -b Control+Mod1+Up:output.level+ \\
 .Xr X 7 ,
 .Xr sndiod 8
 .Sh BUGS
-The volume keys of multimedia keyboards may already control the output level
-using another mechanism.
-If so, using the same keys in
+.Pp
+If the
+.Va kern.audio.kbdcontrol
+.Xr sysctl 8
+variable is set to 1, the volume keys of multimedia keyboards adjust directly
+the hardware output levels of the first
+.Xr audio 4
+device.
+Unfortunately, the keystrokes are still passed to
+.Xr X 7
+programs, causing the volume keys to be interpreted twice,
+resulting in unpredictable level changes.
+To workaround this problem,
 .Nm
-may cause unpredictable output level changes.
+ignores the volume keys if
+.Va kern.audio.kbdcontrol
+is set.
